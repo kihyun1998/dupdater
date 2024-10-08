@@ -4,18 +4,15 @@ import (
 	"fmt"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
 func updateProcess(progress *widget.ProgressBar, status *widget.Label, window fyne.Window) {
-	if healthCheck(applicationName) {
-		updateUI(window, func() {
-			status.SetText("App is running. please close it before updating.")
-		})
-		dialog.ShowInformation("Application Running", "Please close update_test_app_1.exe before updating.", window)
-		return
-	}
+	updateUI(window, func() {
+		status.SetText("Starting update process...")
+	})
+
+	waitForApplicationToClose(applicationName, status, window)
 
 	if err := moveFiles(status, window); err != nil {
 		updateUI(window, func() {

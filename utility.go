@@ -10,14 +10,24 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+// / 프로그램 health check
 func healthCheck(appName string) bool {
 	cmd := exec.Command("tasklist")
-	output, err := cmd.Output() 
+	output, err := cmd.Output()
 	if err != nil {
 		fmt.Println("Error checking running processes:", err)
 		return false
 	}
 	return strings.Contains(string(output), appName)
+}
+
+func waitForApplicationToClose(appName string, status *widget.Label, window fyne.Window) {
+	for healthCheck(appName) {
+		updateUI(window, func() {
+			status.SetText("Waiting for application to close...")
+		})
+		time.Sleep(2 * time.Second)
+	}
 }
 
 // 프로그램 실행 함수
