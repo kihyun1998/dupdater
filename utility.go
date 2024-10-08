@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -12,7 +13,8 @@ import (
 
 // / 프로그램 health check
 func healthCheck(appName string) bool {
-	cmd := exec.Command("tasklist")
+	cmd := exec.Command("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", appName))
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	output, err := cmd.Output()
 	if err != nil {
 		fmt.Println("Error checking running processes:", err)
@@ -37,6 +39,7 @@ func launchApplication(status *widget.Label, window fyne.Window) {
 	})
 
 	cmd := exec.Command(fmt.Sprintf("./%s", applicationName))
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	err := cmd.Start()
 	if err != nil {
 		updateUI(window, func() {
