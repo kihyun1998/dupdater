@@ -158,3 +158,10 @@ func copyDir(src string, dst string) error {
 	}
 	return nil
 }
+
+func removeFile(downloadFilePath string) error {
+	if err := os.Remove(downloadFilePath); err != nil {
+		return err
+	}
+	return nil
+}

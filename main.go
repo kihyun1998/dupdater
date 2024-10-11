@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -47,7 +48,7 @@ func showErrorAndExit(myApp fyne.App) {
 }
 
 func showMainWindow(myApp fyne.App) {
-	mainWindow := myApp.NewWindow("File Downloader")
+	mainWindow := myApp.NewWindow(fmt.Sprintf("ACRA Point Update - %s", currentVersion))
 
 	progress := widget.NewProgressBar()
 	status := widget.NewLabel("Checking for updates...")

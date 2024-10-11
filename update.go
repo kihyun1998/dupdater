@@ -84,6 +84,16 @@ func updateProcess(serverName string, progress *widget.ProgressBar, status *widg
 		return
 	}
 
+	updateUI(window, func() {
+		status.SetText("Cleaning up...")
+	})
+
+	if err := removeFile(downloadFilePath); err != nil {
+		updateUI(window, func() {
+			status.SetText(fmt.Sprintf("Warning: Failed to delete file: %v", err))
+		})
+	}
+
 	// Launch the application
 	launchApplication(status, window)
 }
