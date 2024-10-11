@@ -17,7 +17,9 @@ func moveFiles(status *widget.Label, window fyne.Window) error {
 		status.SetText("Moving files to backup directory...")
 	})
 
-	backupDir := "../ACRABACK"
+	backupDir := filepath.Join(os.TempDir(), "ACRABACK")
+	status.SetText(fmt.Sprintf("back dir is %s", backupDir))
+
 	if err := os.MkdirAll(backupDir, os.ModePerm); err != nil {
 		return fmt.Errorf("error creating backup directory: %v", err)
 	}

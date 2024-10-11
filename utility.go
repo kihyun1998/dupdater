@@ -34,12 +34,12 @@ func waitForApplicationToClose(appName string, status *widget.Label, window fyne
 }
 
 // 프로그램 실행 함수
-func launchApplication(status *widget.Label, window fyne.Window) {
+func launchApplication(fromVersion string, status *widget.Label, window fyne.Window) {
 	updateUI(window, func() {
 		status.SetText("Launching client.exe...")
 	})
 
-	cmd := exec.Command(fmt.Sprintf("./%s", applicationName), "--patch")
+	cmd := exec.Command(fmt.Sprintf("./%s", applicationName), "--patch", "--fromVersion", fromVersion)
 
 	// 창을 보이게 설정
 	cmd.SysProcAttr = &syscall.SysProcAttr{

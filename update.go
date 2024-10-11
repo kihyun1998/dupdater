@@ -42,7 +42,7 @@ func getServerIP(serverName string) (string, error) {
 	return "", fmt.Errorf("server with name '%s' not found", serverName)
 }
 
-func updateProcess(serverName string, progress *widget.ProgressBar, status *widget.Label, window fyne.Window) {
+func updateProcess(serverName, fromVersion string, progress *widget.ProgressBar, status *widget.Label, window fyne.Window) {
 	updateUI(window, func() {
 		status.SetText("Starting update process...")
 	})
@@ -95,5 +95,5 @@ func updateProcess(serverName string, progress *widget.ProgressBar, status *widg
 	}
 
 	// Launch the application
-	launchApplication(status, window)
+	launchApplication(fromVersion, status, window)
 }

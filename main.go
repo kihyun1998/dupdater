@@ -11,12 +11,12 @@ import (
 )
 
 var applicationName string
-var currentVersion string
+var fromVersion string
 var serverName string
 
 func init() {
 	applicationName = "update_test_app_1.exe"
-	flag.StringVar(&currentVersion, "currentVersion", "", "App's Current Version (required)")
+	flag.StringVar(&fromVersion, "fromVersion", "", "App's From Version (required)")
 	flag.StringVar(&serverName, "serverName", "", "Server Name (required)")
 	flag.Parse()
 
@@ -24,7 +24,7 @@ func init() {
 
 func showErrorAndExit(myApp fyne.App) {
 	errorWindow := myApp.NewWindow("Error")
-	errorLabel := widget.NewLabel("Error: -currentVersion flag is required and -serverName flag is required")
+	errorLabel := widget.NewLabel("Error: -fromVersion flag is required and -serverName flag is required")
 	okButton := widget.NewButton("OK", func() {
 		errorWindow.Close()
 		myApp.Quit()
@@ -48,7 +48,7 @@ func showErrorAndExit(myApp fyne.App) {
 }
 
 func showMainWindow(myApp fyne.App) {
-	mainWindow := myApp.NewWindow(fmt.Sprintf("ACRA Point Update - %s", currentVersion))
+	mainWindow := myApp.NewWindow(fmt.Sprintf("ACRA Point Update - %s", fromVersion))
 
 	progress := widget.NewProgressBar()
 	status := widget.NewLabel("Checking for updates...")
@@ -64,7 +64,7 @@ func showMainWindow(myApp fyne.App) {
 	go func() {
 		for {
 			if !healthCheck(applicationName) {
-				updateProcess(serverName, progress, status, mainWindow)
+				updateProcess(serverName, fromVersion, progress, status, mainWindow)
 				break
 			}
 			updateUI(mainWindow, func() {
@@ -80,7 +80,7 @@ func showMainWindow(myApp fyne.App) {
 func main() {
 	myApp := app.New()
 
-	if currentVersion == "" || serverName == "" {
+	if fromVersion == "" || serverName == "" {
 		showErrorAndExit(myApp)
 		return
 	}
