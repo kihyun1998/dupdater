@@ -21,17 +21,35 @@ func moveFiles(status *widget.Label, window fyne.Window) error {
 	if err := os.MkdirAll(backupDir, os.ModePerm); err != nil {
 		return fmt.Errorf("error creating backup directory: %v", err)
 	}
+
 	files, err := os.ReadDir(".")
 	if err != nil {
 		return fmt.Errorf("error reading current directory: %v", err)
 	}
+
 	for _, file := range files {
 		oldPath := file.Name()
 		newPath := filepath.Join(backupDir, file.Name())
-		if err := moveFile(oldPath, newPath); err != nil {
-			return fmt.Errorf("error moving file %s: %v", file.Name(), err)
+
+		if file.IsDir() {
+			// 디렉토리인 경우
+			if err := os.MkdirAll(newPath, os.ModePerm); err != nil {
+				return fmt.Errorf("error creating directory %s: %v", file.Name(), err)
+			}
+			// 디렉토리 내용을 재귀적으로 복사
+			if err := copyDir(oldPath, newPath); err != nil {
+				return fmt.Errorf("error copying directory %s: %v", file.Name(), err)
+			}
+			// 원본 디렉토리 삭제
+			if err := os.RemoveAll(oldPath); err != nil {
+				return fmt.Errorf("error removing original directory %s: %v", file.Name(), err)
+			}
+		} else {
+			// 파일인 경우
+			if err := moveFile(oldPath, newPath); err != nil {
+				return fmt.Errorf("error moving file %s: %v", file.Name(), err)
+			}
 		}
-		// }
 	}
 	return nil
 }
@@ -113,4 +131,30 @@ func copyFile(sourcePath, destPath string) error {
 
 	_, err = io.Copy(destFile, sourceFile)
 	return err
+}
+
+// 디렉토리를 복사하는 함수
+func copyDir(src string, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			if err := os.MkdirAll(dstPath, os.ModePerm); err != nil {
+				return err
+			}
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
+	"golang.org/x/sys/windows"
 )
 
 // / 프로그램 health check
@@ -38,8 +39,13 @@ func launchApplication(status *widget.Label, window fyne.Window) {
 		status.SetText("Launching client.exe...")
 	})
 
-	cmd := exec.Command(fmt.Sprintf("./%s", applicationName))
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd := exec.Command(fmt.Sprintf("./%s", applicationName), "--patch")
+
+	// 창을 보이게 설정
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: windows.CREATE_NEW_CONSOLE,
+	}
+
 	err := cmd.Start()
 	if err != nil {
 		updateUI(window, func() {
