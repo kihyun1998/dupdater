@@ -1,7 +1,7 @@
 package main
 
 import (
-	"time"
+	"flag"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -10,14 +10,44 @@ import (
 )
 
 var applicationName string
+var currentVersion string
+var serverName string
 
 func init() {
 	applicationName = "update_test_app_1.exe"
+	flag.StringVar(&currentVersion, "currentVersion", "", "App's Current Version (required)")
+	flag.StringVar(&serverName, "serverName", "", "Server Name (required)")
+	flag.Parse()
+
 }
 
-func main() {
-	myApp := app.New()
-	myWindow := myApp.NewWindow("File Downloader")
+func showErrorAndExit(myApp fyne.App) {
+	errorWindow := myApp.NewWindow("Error")
+	errorLabel := widget.NewLabel("Error: -currentVersion flag is required and -serverName flag is required")
+	okButton := widget.NewButton("OK", func() {
+		errorWindow.Close()
+		myApp.Quit()
+	})
+
+	content := container.NewVBox(
+		errorLabel,
+		okButton,
+	)
+
+	errorWindow.SetContent(content)
+	errorWindow.Resize(fyne.NewSize(500, 100))
+	errorWindow.SetOnClosed(func() {
+		myApp.Quit()
+	})
+
+	errorWindow.CenterOnScreen()
+	errorWindow.Show()
+
+	myApp.Run()
+}
+
+func showMainWindow(myApp fyne.App) {
+	mainWindow := myApp.NewWindow("File Downloader")
 
 	progress := widget.NewProgressBar()
 	status := widget.NewLabel("Checking for updates...")
@@ -27,21 +57,32 @@ func main() {
 		status,
 	)
 
-	myWindow.SetContent(content)
-	myWindow.Resize(fyne.NewSize(300, 100))
+	mainWindow.SetContent(content)
+	mainWindow.Resize(fyne.NewSize(500, 100))
 
 	go func() {
 		for {
 			if !healthCheck(applicationName) {
-				updateProcess(progress, status, myWindow)
+				updateProcess(serverName, progress, status, mainWindow)
 				break
 			}
-			updateUI(myWindow, func() {
+			updateUI(mainWindow, func() {
 				status.SetText("Waiting for application to close...")
 			})
-			time.Sleep(2 * time.Second)
 		}
 	}()
 
-	myWindow.ShowAndRun()
+	mainWindow.CenterOnScreen()
+	mainWindow.ShowAndRun()
+}
+
+func main() {
+	myApp := app.New()
+
+	if currentVersion == "" || serverName == "" {
+		showErrorAndExit(myApp)
+		return
+	}
+
+	showMainWindow(myApp)
 }
