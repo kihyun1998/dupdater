@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 	"golang.org/x/sys/windows"
 )
@@ -64,4 +65,15 @@ func launchApplication(fromVersion string, status *widget.Label, window fyne.Win
 func updateUI(window fyne.Window, f func()) {
 	window.Canvas().Refresh(window.Content())
 	f()
+}
+
+func showErrorDialog(err error, window fyne.Window) <-chan struct{} {
+	done := make(chan struct{})
+	content := widget.NewLabel(fmt.Sprintf("An error occurred: %v\n\nClick OK to close the updater.", err))
+	errorDialog := dialog.NewCustom("Error", "OK", content, window)
+	errorDialog.SetOnClosed(func() {
+		close(done)
+	})
+	errorDialog.Show()
+	return done
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -42,6 +43,23 @@ func getServerIP(serverName string) (string, error) {
 	return "", fmt.Errorf("server with name '%s' not found", serverName)
 }
 
+func getFileNameFromServer(serverIP string) (string, error) {
+	url := fmt.Sprintf("%s/update/updatefilename", serverIP)
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("error failed to get file name from server :%v", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Filename string `json:"filename"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("error json decode :%v", err)
+	}
+	return result.Filename, nil
+}
+
 func updateProcess(serverName, fromVersion string, progress *widget.ProgressBar, status *widget.Label, window fyne.Window) {
 	updateUI(window, func() {
 		status.SetText("Starting update process...")
@@ -64,9 +82,17 @@ func updateProcess(serverName, fromVersion string, progress *widget.ProgressBar,
 		return
 	}
 
-	downloadFilePath := "downloaded_file.zip"
+	fileName, err := getFileNameFromServer(serverIP)
+	if err != nil {
+		updateUI(window, func() {
+			status.SetText(fmt.Sprintf("error get file name: %v", err))
+		})
+		return
+	}
+
+	// downloadFilePath := "downloaded_file.zip"
 	downloadURL := fmt.Sprintf("%s/update/file", serverIP)
-	if err := downloadFile(downloadURL, downloadFilePath, progress, status, window); err != nil {
+	if err := downloadFile(downloadURL, fileName, progress, status, window); err != nil {
 		updateUI(window, func() {
 			status.SetText(fmt.Sprintf("Error downloading file: %v", err))
 		})
@@ -77,7 +103,7 @@ func updateProcess(serverName, fromVersion string, progress *widget.ProgressBar,
 	updateUI(window, func() {
 		status.SetText("Extracting files...")
 	})
-	if err := unzipFile(downloadFilePath, "."); err != nil {
+	if err := unzipFile(fileName, "."); err != nil {
 		updateUI(window, func() {
 			status.SetText(fmt.Sprintf("Error extracting files: %v", err))
 		})
@@ -88,7 +114,7 @@ func updateProcess(serverName, fromVersion string, progress *widget.ProgressBar,
 		status.SetText("Cleaning up...")
 	})
 
-	if err := removeFile(downloadFilePath); err != nil {
+	if err := removeFile(fileName); err != nil {
 		updateUI(window, func() {
 			status.SetText(fmt.Sprintf("Warning: Failed to delete file: %v", err))
 		})
