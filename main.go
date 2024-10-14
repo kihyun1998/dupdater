@@ -15,13 +15,17 @@ var fromVersion string
 var serverName string
 
 func init() {
+	// 실행할 어플리케이션 이름 정의
 	applicationName = "update_test_app_1.exe"
+	// from version 인자값
 	flag.StringVar(&fromVersion, "fromVersion", "", "App's From Version (required)")
+	// 프로파일명 인자값
 	flag.StringVar(&serverName, "serverName", "", "Server Name (required)")
 	flag.Parse()
 
 }
 
+// 인자값 올바르지 않은경우의 창
 func showErrorAndExit(myApp fyne.App) {
 	errorWindow := myApp.NewWindow("Error")
 	errorLabel := widget.NewLabel("Error: -fromVersion flag is required and -serverName flag is required")
@@ -47,6 +51,7 @@ func showErrorAndExit(myApp fyne.App) {
 	myApp.Run()
 }
 
+// 제대로 된 경우의 창
 func showMainWindow(myApp fyne.App) {
 	mainWindow := myApp.NewWindow(fmt.Sprintf("ACRA Point Update - %s", fromVersion))
 

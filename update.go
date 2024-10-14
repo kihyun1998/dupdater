@@ -1,69 +1,19 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"os"
-	"path/filepath"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 )
 
-func getServerIP(serverName string) (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("error getting user home directory: %w", err)
-	}
-
-	configPath := filepath.Join(homeDir, ".testfolder", "config.json")
-	file, err := os.ReadFile(configPath)
-	if err != nil {
-		return "", fmt.Errorf("error reading config file: %w", err)
-	}
-
-	var data struct {
-		ProfileList []struct {
-			Name string `json:"name"`
-			IP   string `json:"ip"`
-		} `json:"profileList"`
-	}
-
-	if err := json.Unmarshal(file, &data); err != nil {
-		return "", fmt.Errorf("error parsing config file: %w", err)
-	}
-
-	for _, profile := range data.ProfileList {
-		if profile.Name == serverName {
-			return profile.IP, nil
-		}
-	}
-
-	return "", fmt.Errorf("server with name '%s' not found", serverName)
-}
-
-func getFileNameFromServer(serverIP string) (string, error) {
-	url := fmt.Sprintf("%s/update/updatefilename", serverIP)
-	resp, err := http.Get(url)
-	if err != nil {
-		return "", fmt.Errorf("error failed to get file name from server :%v", err)
-	}
-	defer resp.Body.Close()
-	var result struct {
-		Filename string `json:"filename"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("error json decode :%v", err)
-	}
-	return result.Filename, nil
-}
-
+// 업데이트 시작
 func updateProcess(serverName, fromVersion string, progress *widget.ProgressBar, status *widget.Label, window fyne.Window) {
 	updateUI(window, func() {
 		status.SetText("Starting update process...")
 	})
 
+	// 서버 주소 가져오기
 	serverIP, err := getServerIP(serverName)
 	if err != nil {
 		updateUI(window, func() {
@@ -72,8 +22,10 @@ func updateProcess(serverName, fromVersion string, progress *widget.ProgressBar,
 		return
 	}
 
+	// 어플리케이션 닫힐 때 까지 기다리기
 	waitForApplicationToClose(applicationName, status, window)
 
+	// 파일 백업
 	if err := moveFiles(status, window); err != nil {
 		updateUI(window, func() {
 			status.SetText(fmt.Sprintf("Error moving files: %v", err))
@@ -81,6 +33,7 @@ func updateProcess(serverName, fromVersion string, progress *widget.ProgressBar,
 		return
 	}
 
+	// 다운로드 받을 파일명 가져오기
 	fileName, err := getFileNameFromServer(serverIP)
 	if err != nil {
 		updateUI(window, func() {
@@ -89,6 +42,7 @@ func updateProcess(serverName, fromVersion string, progress *widget.ProgressBar,
 		return
 	}
 
+	// 파일 다운로드
 	downloadFilePath := fileName
 	downloadURL := fmt.Sprintf("%s/update/file", serverIP)
 	if err := downloadFile(downloadURL, downloadFilePath, progress, status, window); err != nil {

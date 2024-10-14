@@ -153,30 +153,6 @@ func verifyFileHashSum(filePath, expectedHashBase64 string) error {
 	return nil
 }
 
-// func getFilePathFromHash(pathHash string) string {
-// 	files, err := filepath.Glob("*")
-// 	if err != nil {
-// 		return ""
-// 	}
-
-// 	for _, file := range files {
-// 		// 상대 경로 사용
-// 		relPath, err := filepath.Rel(".", file)
-// 		if err != nil {
-// 			continue
-// 		}
-// 		relPath = filepath.ToSlash(relPath) // 경로 구분자 통일
-
-// 		hash := calculatePathHash(relPath)
-// 		LogInfo("pathHash: %s, hash is %s", pathHash, hash)
-
-// 		if hash == pathHash {
-// 			return relPath
-// 		}
-// 	}
-// 	return ""
-// }
-
 func getFilePathFromHash(pathHash string) (string, error) {
 	var matchedPath string
 	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
