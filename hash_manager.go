@@ -98,12 +98,16 @@ func verifyHashSum(status *widget.Label, window fyne.Window) error {
 		}
 		pathHash, dataHash := parts[1], parts[2]
 
-		filePath := getFilePathFromHash(pathHash)
+		filePath, err := getFilePathFromHash(pathHash)
 		if filePath == "" {
 			err = fmt.Errorf("file not found for hash: %s", pathHash)
 			<-showErrorDialog(err, window)
 			return err
-
+		}
+		if err != nil {
+			err = fmt.Errorf("getFilePathFromHash error: %s", pathHash)
+			<-showErrorDialog(err, window)
+			return err
 		}
 
 		if err := verifyFileHashSum(filePath, dataHash); err != nil {
@@ -149,29 +153,72 @@ func verifyFileHashSum(filePath, expectedHashBase64 string) error {
 	return nil
 }
 
-func getFilePathFromHash(pathHash string) string {
-	files, err := filepath.Glob("*")
-	if err != nil {
-		return ""
-	}
+// func getFilePathFromHash(pathHash string) string {
+// 	files, err := filepath.Glob("*")
+// 	if err != nil {
+// 		return ""
+// 	}
 
-	for _, file := range files {
-		// 상대 경로 사용
-		relPath, err := filepath.Rel(".", file)
+// 	for _, file := range files {
+// 		// 상대 경로 사용
+// 		relPath, err := filepath.Rel(".", file)
+// 		if err != nil {
+// 			continue
+// 		}
+// 		relPath = filepath.ToSlash(relPath) // 경로 구분자 통일
+
+// 		hash := calculatePathHash(relPath)
+// 		LogInfo("pathHash: %s, hash is %s", pathHash, hash)
+
+// 		if hash == pathHash {
+// 			return relPath
+// 		}
+// 	}
+// 	return ""
+// }
+
+func getFilePathFromHash(pathHash string) (string, error) {
+	var matchedPath string
+	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			continue
+			return err
 		}
-		relPath = filepath.ToSlash(relPath) // 경로 구분자 통일
+
+		relPath, err := filepath.Rel(".", path)
+		if err != nil {
+			return err
+		}
+
+		relPath = filepath.ToSlash(relPath)
+
+		if info.IsDir() {
+			return nil
+		}
 
 		hash := calculatePathHash(relPath)
+		LogInfo("pathHash: %s, calculated hash: %s for path: %s", pathHash, hash, relPath)
+
 		if hash == pathHash {
-			return relPath
+			matchedPath = relPath
+			return filepath.SkipDir // 파일을 찾았으므로 검색 중단
 		}
+
+		return nil
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("error walking directory: %v", err)
 	}
-	return ""
+
+	if matchedPath == "" {
+		return "", fmt.Errorf("no matching file found for hash: %s", pathHash)
+	}
+
+	return matchedPath, nil
 }
 
 func calculatePathHash(relPath string) string {
+	LogInfo("path is %s", relPath)
 	hash := sha256.Sum256([]byte(relPath))
 	return base64.StdEncoding.EncodeToString(hash[:])
 }
