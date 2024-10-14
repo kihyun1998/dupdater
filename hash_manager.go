@@ -10,38 +10,27 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/widget"
+	"time"
 )
 
-func verifyFileHash(filePath string, status *widget.Label, window fyne.Window) error {
-	updateUI(window, func() {
-		status.SetText("Verifying file Hash...")
-	})
+func verifyFileHash(filePath string, ui *UpdaterUI) error {
+	ui.UpdateStatus("Verifying file Hash...")
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		err = fmt.Errorf("error opening file: %v", err)
-		<-showErrorDialog(err, window)
-		return err
+		return fmt.Errorf("error opening file: %v", err)
 	}
 	defer file.Close()
 
 	fileInfo, err := file.Stat()
 	if err != nil {
-		err = fmt.Errorf("error getting file info: %v", err)
-		<-showErrorDialog(err, window)
-		return err
+		return fmt.Errorf("error getting file info: %v", err)
 	}
 
 	hashData := make([]byte, 36)
 	_, err = file.ReadAt(hashData, fileInfo.Size()-36)
 	if err != nil {
-		err = fmt.Errorf("error reading hash data: %v", err)
-		<-showErrorDialog(err, window)
-		return err
-
+		return fmt.Errorf("error reading hash data: %v", err)
 	}
 
 	hashLength := binary.LittleEndian.Uint32(hashData[:4])
@@ -49,39 +38,27 @@ func verifyFileHash(filePath string, status *widget.Label, window fyne.Window) e
 
 	hash := sha256.New()
 	if _, err := io.CopyN(hash, file, fileInfo.Size()-36); err != nil {
-		err = fmt.Errorf("error calculating file hash: %v", err)
-		<-showErrorDialog(err, window)
-		return err
-
+		return fmt.Errorf("error calculating file hash: %v", err)
 	}
 
 	calculateHash := hash.Sum(nil)
 
 	if !compareHashes(calculateHash, storedHash[:hashLength]) {
-		err := fmt.Errorf("file hash verification faield")
-		<-showErrorDialog(err, window)
-		return err
+		return fmt.Errorf("file hash verification faield")
 	}
+	ui.UpdateStatus("File hash verified successfully")
 
-	updateUI(window, func() {
-		status.SetText("File hash verified successfully")
-	})
-
+	time.Sleep(time.Second)
 	return nil
 }
 
-func verifyHashSum(status *widget.Label, window fyne.Window) error {
-	updateUI(window, func() {
-		status.SetText("Verifying hash.sum file...")
-	})
+func verifyHashSum(ui *UpdaterUI) error {
+	ui.UpdateStatus("Verifying hash.sum file...")
 
 	sumFilePath := filepath.Join(".", "hash_sum.txt")
 	file, err := os.Open(sumFilePath)
 	if err != nil {
-		err = fmt.Errorf("error opening hash.sum file: %v", err)
-		<-showErrorDialog(err, window)
-		return err
-
+		return fmt.Errorf("error opening hash.sum file: %v", err)
 	}
 	defer file.Close()
 
@@ -91,43 +68,28 @@ func verifyHashSum(status *widget.Label, window fyne.Window) error {
 		line := scanner.Text()
 		parts := strings.Split(line, ";")
 		if len(parts) != 3 {
-			err = fmt.Errorf("invalid line in hash.sum file: %s", line)
-			<-showErrorDialog(err, window)
-			return err
-
+			return fmt.Errorf("invalid line in hash.sum file: %s", line)
 		}
 		pathHash, dataHash := parts[1], parts[2]
 
 		filePath, err := getFilePathFromHash(pathHash)
 		if filePath == "" {
-			err = fmt.Errorf("file not found for hash: %s", pathHash)
-			<-showErrorDialog(err, window)
-			return err
+			return fmt.Errorf("file not found for hash: %s", pathHash)
 		}
 		if err != nil {
-			err = fmt.Errorf("getFilePathFromHash error: %s", pathHash)
-			<-showErrorDialog(err, window)
-			return err
+			return fmt.Errorf("getFilePathFromHash error: %s", pathHash)
 		}
 
 		if err := verifyFileHashSum(filePath, dataHash); err != nil {
-			err = fmt.Errorf("hash verification failed for %s:%v", filePath, err)
-			<-showErrorDialog(err, window)
-			return err
-
+			return fmt.Errorf("hash verification failed for %s:%v", filePath, err)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		err = fmt.Errorf("error reading hash.sum file: %v", err)
-		<-showErrorDialog(err, window)
-		return err
-
+		return fmt.Errorf("error reading hash.sum file: %v", err)
 	}
 
-	updateUI(window, func() {
-		status.SetText("hash.sum verified successfully")
-	})
+	ui.UpdateStatus("hash.sum verified successfully")
 
 	return nil
 }

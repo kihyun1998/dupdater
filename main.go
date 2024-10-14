@@ -3,9 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 )
@@ -52,51 +52,40 @@ func showErrorAndExit(myApp fyne.App) {
 }
 
 // 제대로 된 경우의 창
-func showMainWindow(myApp fyne.App) {
-	mainWindow := myApp.NewWindow(fmt.Sprintf("ACRA Point Update - %s", fromVersion))
-
-	progress := widget.NewProgressBar()
-	status := widget.NewLabel("Checking for updates...")
-
-	content := container.NewVBox(
-		progress,
-		status,
-	)
-
-	mainWindow.SetContent(content)
-	mainWindow.Resize(fyne.NewSize(500, 100))
+func showMainWindow() {
+	ui := newUpdaterUI(fmt.Sprintf("ACRA Point Update - %s", fromVersion))
 
 	go func() {
 		for {
 			if !healthCheck(applicationName) {
-				updateProcess(serverName, fromVersion, progress, status, mainWindow)
+				updateProcess(serverName, fromVersion, ui)
 				break
 			}
-			updateUI(mainWindow, func() {
-				status.SetText("Waiting for application to close...")
-			})
+			ui.UpdateStatus("Waiting for application to close...")
+			time.Sleep(2 * time.Second)
 		}
 	}()
 
-	mainWindow.CenterOnScreen()
-	mainWindow.ShowAndRun()
-}
+	ui.Run()
+} 
 
 func main() {
-	myApp := app.New()
-
 	if fromVersion == "" || serverName == "" {
-		showErrorAndExit(myApp)
+		ui := newUpdaterUI("Error")
+		ui.ShowError(fmt.Errorf("Error: -fromVersion flag and -serverName flag are required"))
+		ui.Run()
 		return
 	}
 
 	if err := InitLogger(); err != nil {
-		fmt.Printf("Failed to initialize logger: %v\n", err)
+		ui := newUpdaterUI("Error")
+		ui.ShowError(fmt.Errorf("Failed to initialize logger: %v", err))
+		ui.Run()
 		return
 	}
 	defer CloseLogger()
 
 	LogInfo("Application started. From Version: %s, Server Name: %s", fromVersion, serverName)
 
-	showMainWindow(myApp)
+	showMainWindow()
 }

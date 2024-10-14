@@ -5,75 +5,58 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"time"
-
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/widget"
 )
 
 // 다운로드 함수
-func downloadFile(url, downloadFilePath string, progress *widget.ProgressBar, status *widget.Label, window fyne.Window) error {
+func downloadFile(url, filepath string, ui *UpdaterUI) error {
+	ui.UpdateStatus("Starting download...")
+
+	// Create the file
+	out, err := os.Create(filepath)
+	if err != nil {
+		return fmt.Errorf("error creating file: %v", err)
+	}
+	defer out.Close()
+
 	// Get the data
 	resp, err := http.Get(url)
 	if err != nil {
-		updateUI(window, func() {
-			status.SetText(fmt.Sprintf("Error downloading file: %v", err))
-		})
-		return &exec.ExitError{}
+		return fmt.Errorf("error downloading file: %v", err)
 	}
 	defer resp.Body.Close()
 
 	// Check server response
 	if resp.StatusCode != http.StatusOK {
-		updateUI(window, func() {
-			status.SetText(fmt.Sprintf("Bad status: %s", resp.Status))
-		})
-		return nil
+		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	// Create the file
-	out, err := os.Create(downloadFilePath)
-	if err != nil {
-		updateUI(window, func() {
-			status.SetText(fmt.Sprintf("Error creating file: %v", err))
-		})
-		return err
-	}
-	defer out.Close()
-
-	// Create a custom io.Writer to track progress
 	counter := &WriteCounter{
-		Total:    resp.ContentLength,
-		progress: progress,
-		status:   status,
-		window:   window,
+		Total: resp.ContentLength,
+		ui:    ui,
 	}
+
+	reader := io.TeeReader(resp.Body, counter)
 
 	// Start time for speed calculation
 	startTime := time.Now()
 
 	// Use io.Copy to optimize file writing and update progress
-	_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
+	_, err = io.Copy(out, reader)
 	if err != nil {
-		updateUI(window, func() {
-			status.SetText(fmt.Sprintf("Error writing to file: %v", err))
-		})
-		return err
+		return fmt.Errorf("error copying content: %v", err)
 	}
 
 	elapsedTime := time.Since(startTime).Seconds()
-	speed := float64(counter.Written) / elapsedTime / 1024 // KB/s
+	speed := float64(counter.Total) / elapsedTime / 1024 / 1024 // MB/s
 
-	updateUI(window, func() {
-		progress.SetValue(1)
-		status.SetText(fmt.Sprintf("Download completed (%.2f KB/s)", speed))
-	})
+	ui.UpdateStatus(fmt.Sprintf("Download completed (%.2f MB/s)", speed))
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(time.Second)
 
-	if err := verifyFileHash(downloadFilePath, status, window); err != nil {
-		return err
+	ui.UpdateStatus("Verifying file integrity...")
+	if err := verifyFileHash(filepath, ui); err != nil {
+		return fmt.Errorf("file verification failed: %v", err)
 	}
 
 	return nil
