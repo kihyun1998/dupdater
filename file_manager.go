@@ -72,13 +72,14 @@ func unzipFile(zipFile, destDir string) error {
 			continue
 		}
 
+		// 파일을 위한 디렉토리 생성
 		if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
-			return err
+			return fmt.Errorf("failed to create directory for %s: %v", filePath, err)
 		}
 
 		outFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, file.Mode())
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create %s: %v", filePath, err)
 		}
 
 		rc, err := file.Open()
@@ -95,7 +96,6 @@ func unzipFile(zipFile, destDir string) error {
 			return err
 		}
 	}
-
 	return nil
 }
 

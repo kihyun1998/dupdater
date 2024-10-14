@@ -76,9 +76,5 @@ func downloadFile(url, downloadFilePath string, progress *widget.ProgressBar, st
 		return err
 	}
 
-	if err := verifyHashSum(status, window); err != nil {
-		return err
-	}
-
 	return nil
 }

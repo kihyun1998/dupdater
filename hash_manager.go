@@ -128,7 +128,7 @@ func verifyHashSum(status *widget.Label, window fyne.Window) error {
 	return nil
 }
 
-func verifyFileHashSum(filePath, expectedHash string) error {
+func verifyFileHashSum(filePath, expectedHashBase64 string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return err
@@ -140,9 +140,11 @@ func verifyFileHashSum(filePath, expectedHash string) error {
 		return err
 	}
 
-	calculatedHash := base64.StdEncoding.EncodeToString(hash.Sum(nil))
-	if calculatedHash != expectedHash {
-		return fmt.Errorf("hash mismatch")
+	calculatedHash := hash.Sum(nil)
+	calculatedHashBase64 := base64.StdEncoding.EncodeToString(calculatedHash)
+
+	if calculatedHashBase64 != expectedHashBase64 {
+		return fmt.Errorf("hash mismatch for %s", filePath)
 	}
 	return nil
 }
@@ -154,9 +156,16 @@ func getFilePathFromHash(pathHash string) string {
 	}
 
 	for _, file := range files {
-		hash := calculatePathHash(file)
+		// 상대 경로 사용
+		relPath, err := filepath.Rel(".", file)
+		if err != nil {
+			continue
+		}
+		relPath = filepath.ToSlash(relPath) // 경로 구분자 통일
+
+		hash := calculatePathHash(relPath)
 		if hash == pathHash {
-			return file
+			return relPath
 		}
 	}
 	return ""

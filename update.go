@@ -50,7 +50,6 @@ func getFileNameFromServer(serverIP string) (string, error) {
 		return "", fmt.Errorf("error failed to get file name from server :%v", err)
 	}
 	defer resp.Body.Close()
-
 	var result struct {
 		Filename string `json:"filename"`
 	}
@@ -90,9 +89,9 @@ func updateProcess(serverName, fromVersion string, progress *widget.ProgressBar,
 		return
 	}
 
-	// downloadFilePath := "downloaded_file.zip"
+	downloadFilePath := fileName
 	downloadURL := fmt.Sprintf("%s/update/file", serverIP)
-	if err := downloadFile(downloadURL, fileName, progress, status, window); err != nil {
+	if err := downloadFile(downloadURL, downloadFilePath, progress, status, window); err != nil {
 		updateUI(window, func() {
 			status.SetText(fmt.Sprintf("Error downloading file: %v", err))
 		})
@@ -103,9 +102,16 @@ func updateProcess(serverName, fromVersion string, progress *widget.ProgressBar,
 	updateUI(window, func() {
 		status.SetText("Extracting files...")
 	})
-	if err := unzipFile(fileName, "."); err != nil {
+	if err := unzipFile(downloadFilePath, "."); err != nil {
 		updateUI(window, func() {
 			status.SetText(fmt.Sprintf("Error extracting files: %v", err))
+		})
+		return
+	}
+
+	if err := verifyHashSum(status, window); err != nil {
+		updateUI(window, func() {
+			status.SetText(fmt.Sprintf("Error verifyHashSum: %v", err))
 		})
 		return
 	}
@@ -114,7 +120,7 @@ func updateProcess(serverName, fromVersion string, progress *widget.ProgressBar,
 		status.SetText("Cleaning up...")
 	})
 
-	if err := removeFile(fileName); err != nil {
+	if err := removeFile(downloadFilePath); err != nil {
 		updateUI(window, func() {
 			status.SetText(fmt.Sprintf("Warning: Failed to delete file: %v", err))
 		})
