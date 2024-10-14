@@ -85,5 +85,13 @@ func main() {
 		return
 	}
 
+	if err := InitLogger(); err != nil {
+		fmt.Printf("Failed to initialize logger: %v\n", err)
+		return
+	}
+	defer CloseLogger()
+
+	LogInfo("Application started. From Version: %s, Server Name: %s", fromVersion, serverName)
+
 	showMainWindow(myApp)
 }
