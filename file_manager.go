@@ -205,3 +205,58 @@ func removeFile(downloadFilePath string) (err error) {
 	}
 	return nil
 }
+
+func restoreFiles(ui *UpdaterUI) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in restoreFiles: %v", r)
+			err = fmt.Errorf("restoreFiles failed unexpectedly: %v", r)
+		}
+	}()
+
+	ui.UpdateDetail("Restoring files from backup directory...")
+
+	backupDir := filepath.Join(os.TempDir(), "ACRABACK")
+	ui.UpdateDetail(fmt.Sprintf("Backup directory is %s", backupDir))
+
+	if _, err := os.Stat(backupDir); os.IsNotExist(err) {
+		return fmt.Errorf("backup directory does not exist: %v", err)
+	}
+
+	files, err := os.ReadDir(backupDir)
+	if err != nil {
+		return fmt.Errorf("error reading backup directory: %v", err)
+	}
+
+	for _, file := range files {
+		oldPath := filepath.Join(backupDir, file.Name())
+		newPath := filepath.Join(".", file.Name())
+
+		if file.IsDir() {
+			// 디렉토리인 경우
+			if err := os.MkdirAll(newPath, os.ModePerm); err != nil {
+				return fmt.Errorf("error creating directory %s: %v", file.Name(), err)
+			}
+			// 디렉토리 내용을 재귀적으로 복사
+			if err := copyDir(oldPath, newPath); err != nil {
+				return fmt.Errorf("error copying directory %s: %v", file.Name(), err)
+			}
+			// 백업 디렉토리에서 해당 디렉토리 삭제
+			if err := os.RemoveAll(oldPath); err != nil {
+				return fmt.Errorf("error removing backup directory %s: %v", file.Name(), err)
+			}
+		} else {
+			// 파일인 경우
+			if err := moveFile(oldPath, newPath); err != nil {
+				return fmt.Errorf("error moving file %s: %v", file.Name(), err)
+			}
+		}
+	}
+
+	// 백업 디렉토리 삭제
+	if err := os.RemoveAll(backupDir); err != nil {
+		return fmt.Errorf("error removing backup directory: %v", err)
+	}
+
+	return nil
+}

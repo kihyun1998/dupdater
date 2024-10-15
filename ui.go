@@ -82,13 +82,19 @@ func (ui *UpdaterUI) SetCurrentStep(step int) {
 
 func (ui *UpdaterUI) ShowError(err error) {
 	errorText := widget.NewLabel(fmt.Sprintf("Error: %v", err))
-	retryButton := widget.NewButton("Retry", func() {
-
+	restoreButton := widget.NewButton("Restore", func() {
+		LogInfo("Restore button clicked")
+		if err := restoreFiles(ui); err != nil {
+			LogError("Restore failed: %v", err)
+			ui.ShowError(fmt.Errorf("restore failed: %v", err))
+		} else {
+			ui.UpdateDetail("Restore completed successfully")
+		}
 	})
 
 	content := container.NewVBox(
 		errorText,
-		retryButton,
+		restoreButton,
 	)
 
 	ui.window.SetContent(content)

@@ -63,7 +63,7 @@ func downloadFile(url, filepath string, ui *UpdaterUI) (err error) {
 
 	ui.UpdateDetail("Verifying file integrity...")
 	if err := verifyFileHash(filepath, ui); err != nil {
-		return fmt.Errorf("file verification failed: %v", err)
+		return err
 	}
 
 	return nil
