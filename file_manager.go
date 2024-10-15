@@ -9,7 +9,14 @@ import (
 )
 
 // 백업폴더로 이동함수
-func moveFiles(ui *UpdaterUI) error {
+func moveFiles(ui *UpdaterUI) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in moveFiles: %v", r)
+			err = fmt.Errorf("moveFiles failed unexpectedly: %v", r)
+		}
+	}()
+
 	ui.UpdateDetail("Moving files to backup directory...")
 
 	backupDir := filepath.Join(os.TempDir(), "ACRABACK")
@@ -21,6 +28,7 @@ func moveFiles(ui *UpdaterUI) error {
 
 	files, err := os.ReadDir(".")
 	if err != nil {
+
 		return fmt.Errorf("error reading current directory: %v", err)
 	}
 
@@ -52,7 +60,14 @@ func moveFiles(ui *UpdaterUI) error {
 }
 
 // 압축해제 함수
-func unzipFile(zipFile, destDir string) error {
+func unzipFile(zipFile, destDir string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in unzipFile: %v", r)
+			err = fmt.Errorf("unzipFile failed unexpectedly: %v", r)
+		}
+	}()
+
 	reader, err := zip.OpenReader(zipFile)
 	if err != nil {
 		return err
@@ -95,9 +110,16 @@ func unzipFile(zipFile, destDir string) error {
 }
 
 // 파일 이동 함수
-func moveFile(sourcePath, destPath string) error {
+func moveFile(sourcePath, destPath string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in moveFile: %v", r)
+			err = fmt.Errorf("moveFile failed unexpectedly: %v", r)
+		}
+	}()
+
 	// Try to move the file
-	err := os.Rename(sourcePath, destPath)
+	err = os.Rename(sourcePath, destPath)
 	if err == nil {
 		return nil
 	}
@@ -113,7 +135,14 @@ func moveFile(sourcePath, destPath string) error {
 }
 
 // 파일 복사 함수
-func copyFile(sourcePath, destPath string) error {
+func copyFile(sourcePath, destPath string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in copyFile: %v", r)
+			err = fmt.Errorf("copyFile failed unexpectedly: %v", r)
+		}
+	}()
+
 	sourceFile, err := os.Open(sourcePath)
 	if err != nil {
 		return err
@@ -131,7 +160,14 @@ func copyFile(sourcePath, destPath string) error {
 }
 
 // 디렉토리를 복사하는 함수
-func copyDir(src string, dst string) error {
+func copyDir(src string, dst string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in copyDir: %v", r)
+			err = fmt.Errorf("copyDir failed unexpectedly: %v", r)
+		}
+	}()
+
 	entries, err := os.ReadDir(src)
 	if err != nil {
 		return err
@@ -156,7 +192,14 @@ func copyDir(src string, dst string) error {
 	return nil
 }
 
-func removeFile(downloadFilePath string) error {
+func removeFile(downloadFilePath string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in copyDir: %v", r)
+			err = fmt.Errorf("copyDir failed unexpectedly: %v", r)
+		}
+	}()
+
 	if err := os.Remove(downloadFilePath); err != nil {
 		return err
 	}

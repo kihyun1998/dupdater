@@ -5,17 +5,25 @@ import (
 )
 
 func updateProcess(serverName, fromVersion string, ui *UpdaterUI) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("panic in updateProcess: %v", r)
+			ui.ShowError(fmt.Errorf("update process failed : %v", r))
+		}
+	}()
+
 	ui.SetCurrentStep(0)
 	ui.UpdateDetail("Starting update process...")
 
 	// 서버 주소 가져오기
 	serverIP, err := getServerIP(serverName)
 	if err != nil {
-		ui.ShowError(fmt.Errorf("Error getting server IP: %v", err))
+		ui.ShowError(fmt.Errorf("error getting server IP: %v", err))
 		return
 	}
 
 	// 어플리케이션 닫힐 때까지 기다리기
+	// TODO: 몇초 기다리고 안꺼진거 확인되면 꺼달라고 하기
 	ui.SetCurrentStep(1)
 	ui.UpdateDetail("Waiting for application to close...")
 	waitForApplicationToClose(applicationName, ui)
@@ -24,7 +32,7 @@ func updateProcess(serverName, fromVersion string, ui *UpdaterUI) {
 	ui.SetCurrentStep(2)
 	ui.UpdateDetail("Backing up files...")
 	if err := moveFiles(ui); err != nil {
-		ui.ShowError(fmt.Errorf("Error moving files: %v", err))
+		ui.ShowError(fmt.Errorf("error moving files: %v", err))
 		return
 	}
 
@@ -33,7 +41,7 @@ func updateProcess(serverName, fromVersion string, ui *UpdaterUI) {
 	ui.UpdateDetail("Getting update file name...")
 	fileName, err := getFileNameFromServer(serverIP)
 	if err != nil {
-		ui.ShowError(fmt.Errorf("Error get file name: %v", err))
+		ui.ShowError(fmt.Errorf("error get file name: %v", err))
 		return
 	}
 
@@ -43,7 +51,7 @@ func updateProcess(serverName, fromVersion string, ui *UpdaterUI) {
 	downloadFilePath := fileName
 	downloadURL := fmt.Sprintf("%s/update/file", serverIP)
 	if err := downloadFile(downloadURL, downloadFilePath, ui); err != nil {
-		ui.ShowError(fmt.Errorf("Error downloading file: %v", err))
+		ui.ShowError(fmt.Errorf("error downloading file: %v", err))
 		return
 	}
 
@@ -51,12 +59,12 @@ func updateProcess(serverName, fromVersion string, ui *UpdaterUI) {
 	ui.SetCurrentStep(5)
 	ui.UpdateDetail("Extracting files...")
 	if err := unzipFile(downloadFilePath, "."); err != nil {
-		ui.ShowError(fmt.Errorf("Error extracting files: %v", err))
+		ui.ShowError(fmt.Errorf("error extracting files: %v", err))
 		return
 	}
 
 	if err := verifyHashSum(ui); err != nil {
-		ui.ShowError(fmt.Errorf("Error verifying hash sum: %v", err))
+		ui.ShowError(fmt.Errorf("error verifying hash sum: %v", err))
 		return
 	}
 
@@ -69,7 +77,11 @@ func updateProcess(serverName, fromVersion string, ui *UpdaterUI) {
 	}
 
 	// Launch the application
-	launchApplication(fromVersion, ui)
+	if err := launchApplication(fromVersion, ui); err != nil {
+		ui.ShowError(fmt.Errorf("%v", err))
+		return
+	}
+
 }
 
 // // 업데이트 시작

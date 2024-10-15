@@ -13,7 +13,14 @@ import (
 	"time"
 )
 
-func verifyFileHash(filePath string, ui *UpdaterUI) error {
+func verifyFileHash(filePath string, ui *UpdaterUI) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in verifyFileHash: %v", r)
+			err = fmt.Errorf("verifyFileHash failed unexpectedly: %v", r)
+		}
+	}()
+
 	ui.UpdateDetail("Verifying file Hash...")
 
 	file, err := os.Open(filePath)
@@ -43,7 +50,12 @@ func verifyFileHash(filePath string, ui *UpdaterUI) error {
 
 	calculateHash := hash.Sum(nil)
 
-	if !compareHashes(calculateHash, storedHash[:hashLength]) {
+	result, err := compareHashes(calculateHash, storedHash[:hashLength])
+	if err != nil {
+		return fmt.Errorf("file hash verification faield")
+	}
+
+	if !result {
 		return fmt.Errorf("file hash verification faield")
 	}
 	ui.UpdateDetail("File hash verified successfully")
@@ -52,7 +64,14 @@ func verifyFileHash(filePath string, ui *UpdaterUI) error {
 	return nil
 }
 
-func verifyHashSum(ui *UpdaterUI) error {
+func verifyHashSum(ui *UpdaterUI) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in verifyHashSum: %v", r)
+			err = fmt.Errorf("verifyHashSum failed unexpectedly: %v", r)
+		}
+	}()
+
 	ui.UpdateDetail("Verifying hash.sum file...")
 
 	sumFilePath := filepath.Join(".", "hash_sum.txt")
@@ -94,7 +113,14 @@ func verifyHashSum(ui *UpdaterUI) error {
 	return nil
 }
 
-func verifyFileHashSum(filePath, expectedHashBase64 string) error {
+func verifyFileHashSum(filePath, expectedHashBase64 string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in verifyFileHashSum: %v", r)
+			err = fmt.Errorf("verifyFileHashSum failed unexpectedly: %v", r)
+		}
+	}()
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		return err
@@ -115,9 +141,16 @@ func verifyFileHashSum(filePath, expectedHashBase64 string) error {
 	return nil
 }
 
-func getFilePathFromHash(pathHash string) (string, error) {
+func getFilePathFromHash(pathHash string) (result string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in getFilePathFromHash: %v", r)
+			err = fmt.Errorf("getFilePathFromHash failed unexpectedly: %v", r)
+		}
+	}()
+
 	var matchedPath string
-	err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -133,7 +166,10 @@ func getFilePathFromHash(pathHash string) (string, error) {
 			return nil
 		}
 
-		hash := calculatePathHash(relPath)
+		hash, err := calculatePathHash(relPath)
+		if err != nil {
+			return fmt.Errorf("error calculate path hash: %v", err)
+		}
 		LogInfo("pathHash: %s, calculated hash: %s for path: %s", pathHash, hash, relPath)
 
 		if hash == pathHash {
@@ -155,20 +191,34 @@ func getFilePathFromHash(pathHash string) (string, error) {
 	return matchedPath, nil
 }
 
-func calculatePathHash(relPath string) string {
-	LogInfo("path is %s", relPath)
+func calculatePathHash(relPath string) (result string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in calculatePathHash: %v", r)
+			err = fmt.Errorf("calculatePathHash failed unexpectedly: %v", r)
+		}
+	}()
+
 	hash := sha256.Sum256([]byte(relPath))
-	return base64.StdEncoding.EncodeToString(hash[:])
+	base64Hash := base64.StdEncoding.EncodeToString(hash[:])
+	return base64Hash, nil
 }
 
-func compareHashes(hash1, hash2 []byte) bool {
+func compareHashes(hash1, hash2 []byte) (result bool, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in compareHashes: %v", r)
+			err = fmt.Errorf("compareHashes failed unexpectedly: %v", r)
+		}
+	}()
+
 	if len(hash1) != len(hash2) {
-		return false
+		return false, nil
 	}
 	for i := range hash1 {
 		if hash1[i] != hash2[i] {
-			return false
+			return false, nil
 		}
 	}
-	return true
+	return true, nil
 }

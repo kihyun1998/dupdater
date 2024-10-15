@@ -9,7 +9,14 @@ import (
 )
 
 // 다운로드 함수
-func downloadFile(url, filepath string, ui *UpdaterUI) error {
+func downloadFile(url, filepath string, ui *UpdaterUI) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in downloadFile: %v", r)
+			err = fmt.Errorf("file download failed unexpectedly: %v", r)
+		}
+	}()
+
 	ui.UpdateDetail("Starting download...")
 
 	// Create the file

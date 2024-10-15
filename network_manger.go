@@ -9,7 +9,14 @@ import (
 )
 
 // 프로파일명을 통해 파일을 읽고 서버 주소를 가져오는 함수
-func getServerIP(serverName string) (string, error) {
+func getServerIP(serverName string) (serverIP string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in getServerIP: %v", r)
+			err = fmt.Errorf("getServerIP failed unexpectedly: %v", r)
+		}
+	}()
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("error getting user home directory: %w", err)
@@ -42,7 +49,14 @@ func getServerIP(serverName string) (string, error) {
 }
 
 // 서버 아이피를 통해 GET 요청을 통해 다운로드 받을 파일명을 가져오는 함수
-func getFileNameFromServer(serverIP string) (string, error) {
+func getFileNameFromServer(serverIP string) (fileName string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			LogError("Panic in getFileNameFromServer: %v", r)
+			err = fmt.Errorf("getFileNameFromServer failed unexpectedly: %v", r)
+		}
+	}()
+
 	url := fmt.Sprintf("%s/update/updatefilename", serverIP)
 	resp, err := http.Get(url)
 	if err != nil {

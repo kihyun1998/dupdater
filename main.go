@@ -57,7 +57,12 @@ func showMainWindow() {
 
 	go func() {
 		for {
-			if !healthCheck(applicationName) {
+			isRunning, err := healthCheck(applicationName)
+			if err != nil {
+				ui.ShowError(err)
+				break
+			}
+			if !isRunning {
 				updateProcess(serverName, fromVersion, ui)
 				break
 			}
@@ -70,16 +75,25 @@ func showMainWindow() {
 }
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			LogInfo("Panic recovered : %v", r)
+			ui := newUpdaterUI("Error")
+			ui.ShowError(fmt.Errorf("unexpected error occurred: %v", r))
+			ui.Run()
+		}
+	}()
+
 	if fromVersion == "" || serverName == "" {
 		ui := newUpdaterUI("Error")
-		ui.ShowError(fmt.Errorf("Error: -fromVersion flag and -serverName flag are required"))
+		ui.ShowError(fmt.Errorf("error: -fromVersion flag and -serverName flag are required"))
 		ui.Run()
 		return
 	}
 
 	if err := InitLogger(); err != nil {
 		ui := newUpdaterUI("Error")
-		ui.ShowError(fmt.Errorf("Failed to initialize logger: %v", err))
+		ui.ShowError(fmt.Errorf("failed to initialize logger: %v", err))
 		ui.Run()
 		return
 	}
