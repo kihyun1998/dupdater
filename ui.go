@@ -5,8 +5,8 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -14,7 +14,7 @@ type UpdaterUI struct {
 	window      fyne.Window
 	stepLabel   *widget.Label
 	detailLabel *widget.Label
-	spinnerIcon *widget.Icon
+	spinnerIcon *canvas.Image
 	currentStep int
 	totalSteps  int
 }
@@ -33,10 +33,14 @@ func newUpdaterUI(appName string) *UpdaterUI {
 }
 
 func (ui *UpdaterUI) createUI() {
-	// icon := theme.NewThemedResource(resourceIconPng)
 	icon := fyne.NewStaticResource("icon", resourceIconPng.StaticContent)
-	ui.spinnerIcon = widget.NewIcon(icon)
-	ui.spinnerIcon.Resize(fyne.NewSize(32, 32))
+
+	ui.spinnerIcon = canvas.NewImageFromResource(icon)
+	ui.spinnerIcon.FillMode = canvas.ImageFillContain
+	// image.Resize(fyne.NewSize(200, 200))
+
+	// ui.spinnerIcon = widget.NewIcon(icon)
+	// ui.spinnerIcon.Resize(fyne.NewSize(50, 50))
 
 	ui.stepLabel = widget.NewLabel("")
 	ui.stepLabel.TextStyle = fyne.TextStyle{Bold: true}
@@ -46,7 +50,7 @@ func (ui *UpdaterUI) createUI() {
 	ui.detailLabel.Alignment = fyne.TextAlignCenter
 
 	content := container.NewVBox(
-		container.NewHBox(ui.spinnerIcon, layout.NewSpacer()),
+		ui.spinnerIcon,
 		ui.stepLabel,
 		ui.detailLabel,
 	)
