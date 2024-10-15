@@ -68,7 +68,14 @@ func verifyHashSum(ui *UpdaterUI) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			LogError("Panic in verifyHashSum: %v", r)
-			err = fmt.Errorf("verifyHashSum failed unexpectedly: %v", r)
+			// err = fmt.Errorf("verifyHashSum failed unexpectedly: %v", r)
+			ui.UpdateDetail("Error occurred. Attempting to restore files...")
+			if err := restoreFiles(ui); err != nil {
+				LogError("Failed to restore files: %v", err)
+				ui.ShowError(fmt.Errorf("update and restore failed: %v", r))
+			} else {
+				ui.ShowError(fmt.Errorf("update failed, files restored: %v", r))
+			}
 		}
 	}()
 

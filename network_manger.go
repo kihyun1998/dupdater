@@ -14,6 +14,13 @@ func getServerIP(serverName string) (serverIP string, err error) {
 		if r := recover(); r != nil {
 			LogError("Panic in getServerIP: %v", r)
 			err = fmt.Errorf("getServerIP failed unexpectedly: %v", r)
+			// ui.UpdateDetail("Error occurred. Attempting to restore files...")
+			// if err := restoreFiles(ui); err != nil {
+			// 	LogError("Failed to restore files: %v", err)
+			// 	ui.ShowError(fmt.Errorf("update and restore failed: %v", r))
+			// } else {
+			// 	ui.ShowError(fmt.Errorf("update failed, files restored: %v", r))
+			// }
 		}
 	}()
 

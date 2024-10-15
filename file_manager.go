@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // 백업폴더로 이동함수
@@ -64,13 +65,13 @@ func unzipFile(zipFile, destDir string) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			LogError("Panic in unzipFile: %v", r)
-			err = fmt.Errorf("unzipFile failed unexpectedly: %v", r)
+			err = fmt.Errorf("error unzip: unzipFile failed unexpectedly: %v", r)
 		}
 	}()
 
 	reader, err := zip.OpenReader(zipFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("error unzip: %v", err)
 	}
 	defer reader.Close()
 
@@ -84,18 +85,18 @@ func unzipFile(zipFile, destDir string) (err error) {
 
 		// 파일을 위한 디렉토리 생성
 		if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
-			return fmt.Errorf("failed to create directory for %s: %v", filePath, err)
+			return fmt.Errorf("error unzip: failed to create directory for %s: %v", filePath, err)
 		}
 
 		outFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, file.Mode())
 		if err != nil {
-			return fmt.Errorf("failed to create %s: %v", filePath, err)
+			return fmt.Errorf("error unzip: failed to create %s: %v", filePath, err)
 		}
 
 		rc, err := file.Open()
 		if err != nil {
 			outFile.Close()
-			return err
+			return fmt.Errorf("error unzip: %v", err)
 		}
 
 		_, err = io.Copy(outFile, rc)
@@ -103,7 +104,7 @@ func unzipFile(zipFile, destDir string) (err error) {
 		rc.Close()
 
 		if err != nil {
-			return err
+			return fmt.Errorf("error unzip: %v", err)
 		}
 	}
 	return nil
@@ -192,11 +193,11 @@ func copyDir(src string, dst string) (err error) {
 	return nil
 }
 
-func removeFile(downloadFilePath string) (err error) {
+func removeFile(downloadFilePath string, ui *UpdaterUI) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			LogError("Panic in copyDir: %v", r)
-			err = fmt.Errorf("copyDir failed unexpectedly: %v", r)
+			LogError("Panic in removeFile: %v", r)
+			err = fmt.Errorf("removeFile failed unexpectedly: %v", r)
 		}
 	}()
 
@@ -221,6 +222,18 @@ func restoreFiles(ui *UpdaterUI) (err error) {
 
 	if _, err := os.Stat(backupDir); os.IsNotExist(err) {
 		return fmt.Errorf("backup directory does not exist: %v", err)
+	}
+
+	// 현재 디렉토리의 내용을 모두 제거
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("error getting current directory: %v", err)
+	}
+
+	ui.UpdateDetail("Removing existing files and directories...")
+	err = removeDirContents(currentDir)
+	if err != nil {
+		return fmt.Errorf("error removing current directory contents: %v", err)
 	}
 
 	files, err := os.ReadDir(backupDir)
@@ -258,5 +271,44 @@ func restoreFiles(ui *UpdaterUI) (err error) {
 		return fmt.Errorf("error removing backup directory: %v", err)
 	}
 
+	return nil
+}
+
+// 디렉토리의 내용을 모두 제거하는 함수
+func removeDirContents(dir string) error {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		path := filepath.Join(dir, file.Name())
+		if file.IsDir() {
+			if err := os.RemoveAll(path); err != nil {
+				return err
+			}
+		} else {
+			for retries := 0; retries < 3; retries++ {
+				err := os.Remove(path)
+				if err == nil {
+					break
+				}
+				if os.IsPermission(err) {
+					return err
+				}
+				if retries == 2 {
+					newPath := path + ".old"
+					if err := os.Rename(path, newPath); err == nil {
+						if err := os.Remove(newPath); err != nil {
+							return fmt.Errorf("failed to remove renamed file %s: %v", newPath, err)
+						}
+					} else {
+						return fmt.Errorf("failed to rename and remove file %s: %v", path, err)
+					}
+				}
+				time.Sleep(time.Second)
+			}
+
+		}
+	}
 	return nil
 }
