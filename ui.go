@@ -14,8 +14,8 @@ import (
 )
 
 type UpdaterUI struct {
-	window      fyne.Window
-	progressBar *widget.ProgressBar
+	window fyne.Window
+	// progressBar *widget.ProgressBar
 	statusLabel *widget.Label
 	stepLabels  []*canvas.Text
 	stepIcons   []*widget.Icon
@@ -28,8 +28,8 @@ func newUpdaterUI(appName string) *UpdaterUI {
 	myWindow := myApp.NewWindow(fmt.Sprintf("%s Updater", appName))
 
 	ui := &UpdaterUI{
-		window:      myWindow,
-		progressBar: widget.NewProgressBar(),
+		window: myWindow,
+		// progressBar: widget.NewProgressBar(),
 		statusLabel: widget.NewLabel("Initializing..."),
 		totalSteps:  7,
 	}
@@ -43,7 +43,7 @@ func (ui *UpdaterUI) createUI() {
 
 	content := container.NewVBox(
 		widget.NewLabel("Updating application..."),
-		ui.progressBar,
+		// ui.progressBar,
 		ui.statusLabel,
 		layout.NewSpacer(),
 		stepsContainer,

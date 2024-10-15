@@ -8,51 +8,6 @@ import (
 	"path/filepath"
 )
 
-// // 백업폴더로 이동함수
-// func moveFiles(status *widget.Label, window fyne.Window) error {
-// 	updateUI(window, func() {
-// 		status.SetText("Moving files to backup directory...")
-// 	})
-
-// 	backupDir := filepath.Join(os.TempDir(), "ACRABACK")
-// 	status.SetText(fmt.Sprintf("back dir is %s", backupDir))
-
-// 	if err := os.MkdirAll(backupDir, os.ModePerm); err != nil {
-// 		return fmt.Errorf("error creating backup directory: %v", err)
-// 	}
-
-// 	files, err := os.ReadDir(".")
-// 	if err != nil {
-// 		return fmt.Errorf("error reading current directory: %v", err)
-// 	}
-
-// 	for _, file := range files {
-// 		oldPath := file.Name()
-// 		newPath := filepath.Join(backupDir, file.Name())
-
-// 		if file.IsDir() {
-// 			// 디렉토리인 경우
-// 			if err := os.MkdirAll(newPath, os.ModePerm); err != nil {
-// 				return fmt.Errorf("error creating directory %s: %v", file.Name(), err)
-// 			}
-// 			// 디렉토리 내용을 재귀적으로 복사
-// 			if err := copyDir(oldPath, newPath); err != nil {
-// 				return fmt.Errorf("error copying directory %s: %v", file.Name(), err)
-// 			}
-// 			// 원본 디렉토리 삭제
-// 			if err := os.RemoveAll(oldPath); err != nil {
-// 				return fmt.Errorf("error removing original directory %s: %v", file.Name(), err)
-// 			}
-// 		} else {
-// 			// 파일인 경우
-// 			if err := moveFile(oldPath, newPath); err != nil {
-// 				return fmt.Errorf("error moving file %s: %v", file.Name(), err)
-// 			}
-// 		}
-// 	}
-// 	return nil
-// }
-
 // 백업폴더로 이동함수
 func moveFiles(ui *UpdaterUI) error {
 	ui.UpdateStatus("Moving files to backup directory...")
