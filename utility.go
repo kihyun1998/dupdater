@@ -33,7 +33,7 @@ func healthCheck(appName string) bool {
 
 func waitForApplicationToClose(appName string, ui *UpdaterUI) {
 	for healthCheck(appName) {
-		ui.UpdateStatus("Waiting for application to close...")
+		ui.UpdateDetail("Waiting for application to close...")
 		time.Sleep(2 * time.Second)
 	}
 }
@@ -41,7 +41,7 @@ func waitForApplicationToClose(appName string, ui *UpdaterUI) {
 // 프로그램 실행 함수
 func launchApplication(fromVersion string, ui *UpdaterUI) {
 
-	ui.UpdateStatus("Preparing to launch application...")
+	ui.UpdateDetail("Preparing to launch application...")
 
 	cmd := exec.Command(fmt.Sprintf("./%s", applicationName), "--patch", "--fromVersion", fromVersion)
 
@@ -50,7 +50,7 @@ func launchApplication(fromVersion string, ui *UpdaterUI) {
 		CreationFlags: windows.CREATE_NEW_CONSOLE,
 	}
 
-	ui.UpdateStatus("Launching client.exe...")
+	ui.UpdateDetail("Launching client.exe...")
 	err := cmd.Start()
 	if err != nil {
 		ui.ShowError(fmt.Errorf("failed to launch application: %v", err))

@@ -10,7 +10,7 @@ import (
 
 // 다운로드 함수
 func downloadFile(url, filepath string, ui *UpdaterUI) error {
-	ui.UpdateStatus("Starting download...")
+	ui.UpdateDetail("Starting download...")
 
 	// Create the file
 	out, err := os.Create(filepath)
@@ -50,11 +50,11 @@ func downloadFile(url, filepath string, ui *UpdaterUI) error {
 	elapsedTime := time.Since(startTime).Seconds()
 	speed := float64(counter.Total) / elapsedTime / 1024 / 1024 // MB/s
 
-	ui.UpdateStatus(fmt.Sprintf("Download completed (%.2f MB/s)", speed))
+	ui.UpdateDetail(fmt.Sprintf("Download completed (%.2f MB/s)", speed))
 
 	time.Sleep(time.Second)
 
-	ui.UpdateStatus("Verifying file integrity...")
+	ui.UpdateDetail("Verifying file integrity...")
 	if err := verifyFileHash(filepath, ui); err != nil {
 		return fmt.Errorf("file verification failed: %v", err)
 	}

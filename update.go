@@ -6,7 +6,7 @@ import (
 
 func updateProcess(serverName, fromVersion string, ui *UpdaterUI) {
 	ui.SetCurrentStep(0)
-	ui.UpdateStatus("Starting update process...")
+	ui.UpdateDetail("Starting update process...")
 
 	// 서버 주소 가져오기
 	serverIP, err := getServerIP(serverName)
@@ -17,12 +17,12 @@ func updateProcess(serverName, fromVersion string, ui *UpdaterUI) {
 
 	// 어플리케이션 닫힐 때까지 기다리기
 	ui.SetCurrentStep(1)
-	ui.UpdateStatus("Waiting for application to close...")
+	ui.UpdateDetail("Waiting for application to close...")
 	waitForApplicationToClose(applicationName, ui)
 
 	// 파일 백업
 	ui.SetCurrentStep(2)
-	ui.UpdateStatus("Backing up files...")
+	ui.UpdateDetail("Backing up files...")
 	if err := moveFiles(ui); err != nil {
 		ui.ShowError(fmt.Errorf("Error moving files: %v", err))
 		return
@@ -30,7 +30,7 @@ func updateProcess(serverName, fromVersion string, ui *UpdaterUI) {
 
 	// 다운로드 받을 파일명 가져오기
 	ui.SetCurrentStep(3)
-	ui.UpdateStatus("Getting update file name...")
+	ui.UpdateDetail("Getting update file name...")
 	fileName, err := getFileNameFromServer(serverIP)
 	if err != nil {
 		ui.ShowError(fmt.Errorf("Error get file name: %v", err))
@@ -39,7 +39,7 @@ func updateProcess(serverName, fromVersion string, ui *UpdaterUI) {
 
 	// 파일 다운로드
 	ui.SetCurrentStep(4)
-	ui.UpdateStatus("Downloading update...")
+	ui.UpdateDetail("Downloading update...")
 	downloadFilePath := fileName
 	downloadURL := fmt.Sprintf("%s/update/file", serverIP)
 	if err := downloadFile(downloadURL, downloadFilePath, ui); err != nil {
@@ -49,7 +49,7 @@ func updateProcess(serverName, fromVersion string, ui *UpdaterUI) {
 
 	// Unzip the downloaded file
 	ui.SetCurrentStep(5)
-	ui.UpdateStatus("Extracting files...")
+	ui.UpdateDetail("Extracting files...")
 	if err := unzipFile(downloadFilePath, "."); err != nil {
 		ui.ShowError(fmt.Errorf("Error extracting files: %v", err))
 		return
@@ -61,7 +61,7 @@ func updateProcess(serverName, fromVersion string, ui *UpdaterUI) {
 	}
 
 	ui.SetCurrentStep(6)
-	ui.UpdateStatus("Cleaning up...")
+	ui.UpdateDetail("Cleaning up...")
 
 	if err := removeFile(downloadFilePath); err != nil {
 		ui.ShowError(fmt.Errorf("Warning: Failed to delete file: %v", err))

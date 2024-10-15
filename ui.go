@@ -2,23 +2,19 @@ package main
 
 import (
 	"fmt"
-	"image/color"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
 type UpdaterUI struct {
-	window fyne.Window
-	// progressBar *widget.ProgressBar
-	statusLabel *widget.Label
-	stepLabels  []*canvas.Text
-	stepIcons   []*widget.Icon
+	window      fyne.Window
+	stepLabel   *widget.Label
+	detailLabel *widget.Label
+	spinnerIcon *widget.Icon
 	currentStep int
 	totalSteps  int
 }
@@ -28,10 +24,8 @@ func newUpdaterUI(appName string) *UpdaterUI {
 	myWindow := myApp.NewWindow(fmt.Sprintf("%s Updater", appName))
 
 	ui := &UpdaterUI{
-		window: myWindow,
-		// progressBar: widget.NewProgressBar(),
-		statusLabel: widget.NewLabel("Initializing..."),
-		totalSteps:  7,
+		window:     myWindow,
+		totalSteps: 7,
 	}
 
 	ui.createUI()
@@ -39,52 +33,38 @@ func newUpdaterUI(appName string) *UpdaterUI {
 }
 
 func (ui *UpdaterUI) createUI() {
-	stepsContainer := ui.createStepsUI()
+	// icon := theme.NewThemedResource(resourceIconPng)
+	icon := fyne.NewStaticResource("icon", resourceIconPng.StaticContent)
+	ui.spinnerIcon = widget.NewIcon(icon)
+	ui.spinnerIcon.Resize(fyne.NewSize(32, 32))
+
+	ui.stepLabel = widget.NewLabel("")
+	ui.stepLabel.TextStyle = fyne.TextStyle{Bold: true}
+
+	ui.detailLabel = widget.NewLabel("")
+	ui.detailLabel.TextStyle = fyne.TextStyle{Italic: true}
+	ui.detailLabel.Alignment = fyne.TextAlignCenter
 
 	content := container.NewVBox(
-		widget.NewLabel("Updating application..."),
-		// ui.progressBar,
-		ui.statusLabel,
-		layout.NewSpacer(),
-		stepsContainer,
+		container.NewHBox(ui.spinnerIcon, layout.NewSpacer()),
+		ui.stepLabel,
+		ui.detailLabel,
 	)
 
 	paddedContent := container.NewPadded(content)
 
 	ui.window.SetContent(paddedContent)
-	ui.window.Resize(fyne.NewSize(400, 300))
+	ui.window.Resize(fyne.NewSize(300, 150))
 }
 
-func (ui *UpdaterUI) createStepsUI() *fyne.Container {
-	stepsContainer := container.NewVBox()
-
-	stepNames := []string{
-		"Check application status",
-		"Backup files",
-		"Download update",
-		"Verify download",
-		"Extract files",
-		"Verify installation",
-		"Launch application",
-	}
-
-	for _, name := range stepNames {
-		icon := widget.NewIcon(theme.QuestionIcon())
-		label := canvas.NewText(name, color.Black)
-		label.TextStyle = fyne.TextStyle{Monospace: true}
-
-		stepContainer := container.NewHBox(icon, label)
-		stepsContainer.Add(stepContainer)
-
-		ui.stepIcons = append(ui.stepIcons, icon)
-		ui.stepLabels = append(ui.stepLabels, label)
-
-	}
-	return stepsContainer
+func (ui *UpdaterUI) UpdateStep(status string) {
+	ui.stepLabel.SetText(status)
+	ui.window.Content().Refresh()
 }
 
-func (ui *UpdaterUI) UpdateStatus(status string) {
-	ui.statusLabel.SetText(status)
+func (ui *UpdaterUI) UpdateDetail(status string) {
+	ui.detailLabel.SetText(status)
+	ui.window.Content().Refresh()
 }
 
 func (ui *UpdaterUI) SetCurrentStep(step int) {
@@ -92,32 +72,19 @@ func (ui *UpdaterUI) SetCurrentStep(step int) {
 		return
 	}
 
-	if ui.currentStep < ui.totalSteps {
-		ui.stepIcons[ui.currentStep].SetResource(theme.QuestionIcon())
-		ui.stepLabels[ui.currentStep].Color = color.Black
-	}
-
 	ui.currentStep = step
-	ui.stepIcons[ui.currentStep].SetResource(theme.NavigateNextIcon())
-	ui.stepLabels[ui.currentStep].Color = theme.Color(theme.ColorNamePrimary)
-
-	for i := 0; i < ui.currentStep; i++ {
-		ui.stepIcons[i].SetResource(theme.ConfirmIcon())
-	}
-
-	ui.window.Content().Refresh()
+	ui.UpdateStep(fmt.Sprintf("Step %d of %d", ui.currentStep+1, ui.totalSteps))
 }
 
 func (ui *UpdaterUI) ShowError(err error) {
-	errorText := canvas.NewText(fmt.Sprintf("Error: %v", err), color.NRGBA{R: 200, G: 30, B: 30, A: 255})
-	errorText.Alignment = fyne.TextAlignCenter
-	errorText.TextStyle = fyne.TextStyle{Bold: true}
+	errorText := widget.NewLabel(fmt.Sprintf("Error: %v", err))
+	retryButton := widget.NewButton("Retry", func() {
+
+	})
 
 	content := container.NewVBox(
 		errorText,
-		widget.NewButton("OK", func() {
-			ui.window.Close()
-		}),
+		retryButton,
 	)
 
 	ui.window.SetContent(content)

@@ -61,13 +61,13 @@ func showMainWindow() {
 				updateProcess(serverName, fromVersion, ui)
 				break
 			}
-			ui.UpdateStatus("Waiting for application to close...")
+			ui.UpdateDetail("Waiting for application to close...")
 			time.Sleep(2 * time.Second)
 		}
 	}()
 
 	ui.Run()
-} 
+}
 
 func main() {
 	if fromVersion == "" || serverName == "" {

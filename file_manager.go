@@ -10,10 +10,10 @@ import (
 
 // 백업폴더로 이동함수
 func moveFiles(ui *UpdaterUI) error {
-	ui.UpdateStatus("Moving files to backup directory...")
+	ui.UpdateDetail("Moving files to backup directory...")
 
 	backupDir := filepath.Join(os.TempDir(), "ACRABACK")
-	ui.UpdateStatus(fmt.Sprintf("back dir is %s", backupDir))
+	ui.UpdateDetail(fmt.Sprintf("back dir is %s", backupDir))
 
 	if err := os.MkdirAll(backupDir, os.ModePerm); err != nil {
 		return fmt.Errorf("error creating backup directory: %v", err)

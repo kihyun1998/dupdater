@@ -14,7 +14,7 @@ import (
 )
 
 func verifyFileHash(filePath string, ui *UpdaterUI) error {
-	ui.UpdateStatus("Verifying file Hash...")
+	ui.UpdateDetail("Verifying file Hash...")
 
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -46,14 +46,14 @@ func verifyFileHash(filePath string, ui *UpdaterUI) error {
 	if !compareHashes(calculateHash, storedHash[:hashLength]) {
 		return fmt.Errorf("file hash verification faield")
 	}
-	ui.UpdateStatus("File hash verified successfully")
+	ui.UpdateDetail("File hash verified successfully")
 
 	time.Sleep(time.Second)
 	return nil
 }
 
 func verifyHashSum(ui *UpdaterUI) error {
-	ui.UpdateStatus("Verifying hash.sum file...")
+	ui.UpdateDetail("Verifying hash.sum file...")
 
 	sumFilePath := filepath.Join(".", "hash_sum.txt")
 	file, err := os.Open(sumFilePath)
@@ -89,7 +89,7 @@ func verifyHashSum(ui *UpdaterUI) error {
 		return fmt.Errorf("error reading hash.sum file: %v", err)
 	}
 
-	ui.UpdateStatus("hash.sum verified successfully")
+	ui.UpdateDetail("hash.sum verified successfully")
 
 	return nil
 }
