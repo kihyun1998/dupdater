@@ -168,6 +168,10 @@ fyne bundle -o bundled.go icon.png
 추가 여부 : `true`
 라이선스: `MIT`
 
+### github.com/goxjs/gl v0.0.0-20210104184919-e3fafc6f8f2a
+링크: [링크](https://github.com/goxjs/gl)
+라이선스: [[BSD-3-Clause]]
+
 ## go.mod
 
 ```go
