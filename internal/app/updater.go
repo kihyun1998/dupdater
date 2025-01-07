@@ -4,31 +4,38 @@ package app
 import (
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // Updater는 업데이트 프로세스의 전체 흐름을 제어하는 구조체입니다
 type Updater struct {
-	// 설정 관련 필드
+	// 기본 설정
 	appName     string // 업데이트할 애플리케이션의 이름
 	fromVersion string // 현재 애플리케이션의 버전
 	serverName  string // 서버 프로필 이름
 
-	// 의존성 주입을 위한 필드
-	serverIP    string         // 조회된 서버 IP
-	ui          UI             // 사용자 인터페이스
+	// 의존성들
+	ui          UIManager      // UI 관리자
 	logger      Logger         // 로깅 시스템
 	network     NetworkManager // 네트워크 관리자
 	fileManager FileManager    // 파일 관리자
 	hashManager HashManager    // 해시 관리자
+
+	// 상태 정보
+	serverIP   string // 조회된 서버 IP
+	updateFile string // 다운로드된 업데이트 파일 경로
 }
 
 // Config는 새로운 Updater를 생성할 때 필요한 설정을 담는 구조체입니다
 type Config struct {
-	AppName     string // 업데이트할 애플리케이션의 이름
-	FromVersion string // 현재 애플리케이션의 버전
-	ServerName  string // 서버 프로필 이름
-	UI          UI     // 사용자 인터페이스 구현체
-	Logger      Logger // 로거 구현체
+	AppName        string
+	FromVersion    string
+	ServerName     string
+	UIManager      UIManager
+	Logger         Logger
+	NetworkManager NetworkManager
+	FileManager    FileManager
+	HashManager    HashManager
 }
 
 // New는 새로운 Updater 인스턴스를 생성합니다
@@ -37,49 +44,176 @@ func New(config Config) *Updater {
 		appName:     config.AppName,
 		fromVersion: config.FromVersion,
 		serverName:  config.ServerName,
-		ui:          config.UI,
+		ui:          config.UIManager,
 		logger:      config.Logger,
+		network:     config.NetworkManager,
+		fileManager: config.FileManager,
+		hashManager: config.HashManager,
 	}
 }
 
 // Start는 업데이트 프로세스를 시작합니다
-func (u *Updater) Start() error {
-	// 패닉 복구를 위한 defer 함수
+func (u *Updater) Start() {
+	// UI 복구 핸들러 설정
+	u.ui.SetRestoreHandler(func() {
+		if err := u.restoreFiles(); err != nil {
+			u.logger.Error("파일 복원 실패: %v", err)
+			u.ui.ShowError(fmt.Errorf("복원 실패: %w", err))
+		} else {
+			u.ui.UpdateDetail("파일 복원이 완료되었습니다")
+		}
+	})
+
+	// 업데이트 프로세스 시작
+	go func() {
+		if err := u.processUpdate(); err != nil {
+			u.logger.Error("업데이트 실패: %v", err)
+			u.ui.ShowError(err)
+		}
+	}()
+
+	// UI 실행 (메인 스레드에서 실행)
+	u.ui.Run()
+}
+
+func (u *Updater) processUpdate() error {
 	defer func() {
 		if r := recover(); r != nil {
 			u.logger.Error("업데이트 프로세스 중 패닉 발생: %v", r)
 		}
 	}()
 
-	// 업데이트 프로세스 초기화
-	u.ui.SetCurrentStep(0)
-	u.ui.UpdateDetail("업데이트 프로세스를 시작합니다...")
-
-	// update_flow.markdown에 정의된 업데이트 흐름에 따라 진행
+	// 1. 애플리케이션 실행 상태 확인
 	if err := u.checkRunningApp(); err != nil {
-		return fmt.Errorf("애플리케이션 실행 상태 확인 실패: %v", err)
+		return fmt.Errorf("애플리케이션 상태 확인 실패: %w", err)
 	}
 
+	// 2. 서버 IP 가져오기
 	if err := u.getServerIP(); err != nil {
-		return fmt.Errorf("서버 IP 가져오기 실패: %v", err)
+		return fmt.Errorf("서버 IP 가져오기 실패: %w", err)
 	}
 
+	// 3. 파일 백업
 	if err := u.backupFiles(); err != nil {
-		return fmt.Errorf("파일 백업 실패: %v", err)
+		return fmt.Errorf("파일 백업 실패: %w", err)
 	}
 
-	// 나머지 프로세스는 추후 구현 예정입니다
+	// 4. 업데이트 파일 다운로드
+	if err := u.downloadUpdateFile(); err != nil {
+		return u.handleError("업데이트 파일 다운로드 실패", err)
+	}
+
+	// 5. 업데이트 파일 검증
+	if err := u.verifyUpdateFile(); err != nil {
+		return u.handleError("업데이트 파일 검증 실패", err)
+	}
+
+	// 6. 파일 압축해제
+	if err := u.extractUpdateFile(); err != nil {
+		return u.handleError("파일 압축해제 실패", err)
+	}
+
+	// 7. 압축해제된 파일들 검증
+	if err := u.verifyExtractedFiles(); err != nil {
+		return u.handleError("압축해제된 파일 검증 실패", err)
+	}
+
+	// 8. 애플리케이션 재시작
+	if err := u.restartApplication(); err != nil {
+		return u.handleError("애플리케이션 재시작 실패", err)
+	}
 
 	return nil
 }
 
-// 필요한 인터페이스 정의
+func (u *Updater) checkRunningApp() error {
+	u.ui.SetCurrentStep(0)
+	u.ui.UpdateDetail("애플리케이션 실행 상태를 확인하고 있습니다...")
+	// 애플리케이션 실행 상태 확인 구현
+	time.Sleep(1 * time.Second) // 임시 구현
+	return nil
+}
 
-// UI는 사용자 인터페이스와의 상호작용을 위한 인터페이스입니다
-type UI interface {
-	SetCurrentStep(step int)     // 현재 진행 단계를 설정합니다
-	UpdateDetail(message string) // 상세 메시지를 업데이트합니다
-	ShowError(err error)         // 에러를 표시합니다
+func (u *Updater) getServerIP() error {
+	u.ui.SetCurrentStep(1)
+	u.ui.UpdateDetail("서버 정보를 가져오고 있습니다...")
+
+	ip, err := u.network.GetServerIP(u.serverName)
+	if err != nil {
+		return err
+	}
+
+	u.serverIP = ip
+	return nil
+}
+
+func (u *Updater) backupFiles() error {
+	u.ui.SetCurrentStep(2)
+	u.ui.UpdateDetail("파일을 백업하고 있습니다...")
+	return u.fileManager.Backup()
+}
+
+func (u *Updater) downloadUpdateFile() error {
+	u.ui.SetCurrentStep(3)
+	u.ui.UpdateDetail("업데이트 파일을 다운로드하고 있습니다...")
+
+	filename, err := u.network.GetUpdateFileName(u.serverIP)
+	if err != nil {
+		return err
+	}
+
+	resp, err := u.network.DownloadFile(u.serverIP, filename)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	u.updateFile = filename
+	return nil
+}
+
+func (u *Updater) verifyUpdateFile() error {
+	u.ui.SetCurrentStep(4)
+	u.ui.UpdateDetail("업데이트 파일을 검증하고 있습니다...")
+	return u.hashManager.VerifyUpdateFile(u.updateFile)
+}
+
+func (u *Updater) extractUpdateFile() error {
+	u.ui.SetCurrentStep(5)
+	u.ui.UpdateDetail("파일을 압축해제하고 있습니다...")
+
+	if err := u.fileManager.ExtractZip(u.updateFile); err != nil {
+		return err
+	}
+
+	return u.fileManager.DeleteFile(u.updateFile)
+}
+
+func (u *Updater) verifyExtractedFiles() error {
+	u.ui.SetCurrentStep(6)
+	u.ui.UpdateDetail("압축해제된 파일들을 검증하고 있습니다...")
+	return u.hashManager.VerifyHashSum()
+}
+
+func (u *Updater) restartApplication() error {
+	u.ui.SetCurrentStep(7)
+	u.ui.UpdateDetail("애플리케이션을 재시작하고 있습니다...")
+	// 애플리케이션 재시작 로직 구현
+	return nil
+}
+
+func (u *Updater) restoreFiles() error {
+	u.ui.UpdateDetail("파일을 복원하고 있습니다...")
+	return u.fileManager.Restore()
+}
+
+func (u *Updater) handleError(message string, err error) error {
+	u.logger.Error("%s: %v", message, err)
+	if restoreErr := u.restoreFiles(); restoreErr != nil {
+		u.logger.Error("파일 복원 실패: %v", restoreErr)
+		return fmt.Errorf("%s, 복원 실패: %v", message, err)
+	}
+	return fmt.Errorf("%s: %v", message, err)
 }
 
 // Logger는 로깅 작업을 위한 인터페이스입니다
@@ -110,107 +244,12 @@ type HashManager interface {
 	VerifyHashSum() error
 }
 
-// checkRunningApp은 업데이트할 애플리케이션이 실행 중인지 확인합니다
-func (u *Updater) checkRunningApp() error {
-	u.ui.SetCurrentStep(1)
-	u.ui.UpdateDetail("애플리케이션 실행 상태를 확인하고 있습니다...")
-	// 구체적인 구현은 추후 추가될 예정입니다
-	return nil
-}
-
-// getServerIP
-func (u *Updater) getServerIP() error {
-	u.ui.SetCurrentStep(2)
-	u.ui.UpdateDetail("서버 IP를 가져오고 있습니다...")
-
-	serverIP, err := u.network.GetServerIP(u.serverName)
-	if err != nil {
-		return fmt.Errorf("서버 IP 가져오기 실패: %w", err)
-	}
-
-	u.serverIP = serverIP
-	u.logger.Info("서버 IP 확인됨: %s", serverIP)
-	return nil
-}
-
-// backupFiles
-func (u *Updater) backupFiles() error {
-	u.ui.SetCurrentStep(3)
-	u.ui.UpdateDetail("파일을 백업하고 있습니다...")
-
-	if err := u.fileManager.Backup(); err != nil {
-		return fmt.Errorf("파일 백업 실패: %w", err)
-	}
-
-	u.logger.Info("파일 백업 완료")
-	return nil
-}
-
-// 새로운 메서드 추가: 업데이트 파일 조회
-func (u *Updater) getUpdateFileName() error {
-	u.ui.SetCurrentStep(3)
-	u.ui.UpdateDetail("업데이트 파일 정보를 조회하고 있습니다...")
-
-	filename, err := u.network.GetUpdateFileName(u.serverIP)
-	if err != nil {
-		return fmt.Errorf("업데이트 파일 정보 조회 실패: %w", err)
-	}
-
-	u.logger.Info("업데이트 파일 확인됨: %s", filename)
-	return nil
-}
-
-// 업데이트 파일 압축해제
-func (u *Updater) extractUpdateFile(zipPath string) error {
-	u.ui.SetCurrentStep(5)
-	u.ui.UpdateDetail("업데이트 파일을 압축해제하고 있습니다...")
-
-	if err := u.fileManager.ExtractZip(zipPath); err != nil {
-		return fmt.Errorf("압축해제 실패: %w", err)
-	}
-
-	// 압축 해제 후 ZIP 파일 삭제
-	if err := u.fileManager.DeleteFile(zipPath); err != nil {
-		u.logger.Error("ZIP 파일 삭제 실패: %v", err)
-	}
-
-	return nil
-}
-
-// 복원 메서드
-func (u *Updater) restoreFiles() error {
-	u.ui.UpdateDetail("파일을 복원하고 있습니다...")
-
-	if err := u.fileManager.Restore(); err != nil {
-		return fmt.Errorf("파일 복원 실패: %w", err)
-	}
-
-	u.logger.Info("파일 복원 완료")
-	return nil
-}
-
-// verifyUpdateFile 메서드 구현
-func (u *Updater) verifyUpdateFile(filePath string) error {
-	u.ui.SetCurrentStep(4)
-	u.ui.UpdateDetail("업데이트 파일의 무결성을 검증하고 있습니다...")
-
-	if err := u.hashManager.VerifyUpdateFile(filePath); err != nil {
-		return fmt.Errorf("업데이트 파일 검증 실패: %w", err)
-	}
-
-	u.logger.Info("업데이트 파일 검증 완료")
-	return nil
-}
-
-// verifyExtractedFiles 메서드 구현
-func (u *Updater) verifyExtractedFiles() error {
-	u.ui.SetCurrentStep(6)
-	u.ui.UpdateDetail("압축 해제된 파일들의 무결성을 검증하고 있습니다...")
-
-	if err := u.hashManager.VerifyHashSum(); err != nil {
-		return fmt.Errorf("파일 검증 실패: %w", err)
-	}
-
-	u.logger.Info("모든 파일 검증 완료")
-	return nil
+// UIManager 인터페이스
+type UIManager interface {
+	SetCurrentStep(step int)
+	UpdateDetail(message string)
+	ShowError(err error)
+	Run()
+	Close()
+	SetRestoreHandler(handler func())
 }
