@@ -30,7 +30,7 @@ type Manager struct {
 	detailLabel *widget.Label
 
 	// 복구 핸들러
-	onRestore RestoreHandler
+	onRestore func()
 }
 
 // Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
@@ -171,11 +171,8 @@ func (m *Manager) triggerRestore() {
 	}
 }
 
-// RestoreHandler는 복구 작업을 처리하는 함수의 타입입니다
-type RestoreHandler func()
-
 // SetRestoreHandler는 복구 핸들러를 설정합니다
-func (m *Manager) SetRestoreHandler(handler RestoreHandler) {
+func (m *Manager) SetRestoreHandler(handler func()) {
 	m.onRestore = handler
 }
 
