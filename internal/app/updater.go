@@ -14,11 +14,12 @@ type Updater struct {
 	serverName  string // 서버 프로필 이름
 
 	// 의존성 주입을 위한 필드
+	serverIP    string         // 조회된 서버 IP
 	ui          UI             // 사용자 인터페이스
 	logger      Logger         // 로깅 시스템
 	network     NetworkManager // 네트워크 관리자
 	fileManager FileManager    // 파일 관리자
-	serverIP    string         // 조회된 서버 IP
+	hashManager HashManager    // 해시 관리자
 }
 
 // Config는 새로운 Updater를 생성할 때 필요한 설정을 담는 구조체입니다
@@ -102,6 +103,13 @@ type FileManager interface {
 	DeleteFile(path string) error
 }
 
+// HashManager 인터페이스
+type HashManager interface {
+	VerifyFile(filePath string, expectedHash string) error
+	VerifyUpdateFile(filePath string) error
+	VerifyHashSum() error
+}
+
 // checkRunningApp은 업데이트할 애플리케이션이 실행 중인지 확인합니다
 func (u *Updater) checkRunningApp() error {
 	u.ui.SetCurrentStep(1)
@@ -178,5 +186,31 @@ func (u *Updater) restoreFiles() error {
 	}
 
 	u.logger.Info("파일 복원 완료")
+	return nil
+}
+
+// verifyUpdateFile 메서드 구현
+func (u *Updater) verifyUpdateFile(filePath string) error {
+	u.ui.SetCurrentStep(4)
+	u.ui.UpdateDetail("업데이트 파일의 무결성을 검증하고 있습니다...")
+
+	if err := u.hashManager.VerifyUpdateFile(filePath); err != nil {
+		return fmt.Errorf("업데이트 파일 검증 실패: %w", err)
+	}
+
+	u.logger.Info("업데이트 파일 검증 완료")
+	return nil
+}
+
+// verifyExtractedFiles 메서드 구현
+func (u *Updater) verifyExtractedFiles() error {
+	u.ui.SetCurrentStep(6)
+	u.ui.UpdateDetail("압축 해제된 파일들의 무결성을 검증하고 있습니다...")
+
+	if err := u.hashManager.VerifyHashSum(); err != nil {
+		return fmt.Errorf("파일 검증 실패: %w", err)
+	}
+
+	u.logger.Info("모든 파일 검증 완료")
 	return nil
 }
