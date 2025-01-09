@@ -88,14 +88,15 @@ func main() {
 
 	// 7. Updater 생성 및 시작
 	updater := app.New(app.Config{
-		AppName:        AppName,
-		FromVersion:    *fromVersion,
-		ServerName:     *serverName,
-		UIManager:      uiManager,
-		Logger:         logger,
-		NetworkManager: networkManager,
-		FileManager:    fileManager,
-		HashManager:    hashManager,
+		AppName:         AppName,
+		FromVersion:     *fromVersion,
+		ServerName:      *serverName,
+		BackupCompleted: false,
+		UIManager:       uiManager,
+		Logger:          logger,
+		NetworkManager:  networkManager,
+		FileManager:     fileManager,
+		HashManager:     hashManager,
 	})
 
 	// 8. 업데이트 프로세스 시작

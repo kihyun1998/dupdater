@@ -3,10 +3,15 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"syscall"
 	"time"
 
 	"github.com/kihyun1998/dupdater/pkg/utils"
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -17,9 +22,10 @@ const (
 // Updater는 업데이트 프로세스의 전체 흐름을 제어하는 구조체입니다
 type Updater struct {
 	// 기본 설정
-	appName     string // 업데이트할 애플리케이션의 이름
-	fromVersion string // 현재 애플리케이션의 버전
-	serverName  string // 서버 프로필 이름
+	appName         string // 업데이트할 애플리케이션의 이름
+	fromVersion     string // 현재 애플리케이션의 버전
+	serverName      string // 서버 프로필 이름
+	backupCompleted bool   // 백업 상태 추적을 위한 필드 추가
 
 	// 의존성들
 	ui          UIManager      // UI 관리자
@@ -35,27 +41,29 @@ type Updater struct {
 
 // Config는 새로운 Updater를 생성할 때 필요한 설정을 담는 구조체입니다
 type Config struct {
-	AppName        string
-	FromVersion    string
-	ServerName     string
-	UIManager      UIManager
-	Logger         Logger
-	NetworkManager NetworkManager
-	FileManager    FileManager
-	HashManager    HashManager
+	AppName         string
+	FromVersion     string
+	ServerName      string
+	BackupCompleted bool
+	UIManager       UIManager
+	Logger          Logger
+	NetworkManager  NetworkManager
+	FileManager     FileManager
+	HashManager     HashManager
 }
 
 // New는 새로운 Updater 인스턴스를 생성합니다
 func New(config Config) *Updater {
 	return &Updater{
-		appName:     config.AppName,
-		fromVersion: config.FromVersion,
-		serverName:  config.ServerName,
-		ui:          config.UIManager,
-		logger:      config.Logger,
-		network:     config.NetworkManager,
-		fileManager: config.FileManager,
-		hashManager: config.HashManager,
+		appName:         config.AppName,
+		fromVersion:     config.FromVersion,
+		serverName:      config.ServerName,
+		backupCompleted: config.BackupCompleted,
+		ui:              config.UIManager,
+		logger:          config.Logger,
+		network:         config.NetworkManager,
+		fileManager:     config.FileManager,
+		hashManager:     config.HashManager,
 	}
 }
 
@@ -84,27 +92,29 @@ func (u *Updater) Start() {
 }
 
 func (u *Updater) processUpdate() error {
+
 	defer func() {
 		if r := recover(); r != nil {
 			u.logger.Error("업데이트 프로세스 중 패닉 발생: %v", r)
+			u.handleError("예기치 못한 오류 발생", fmt.Errorf("%v", r))
 		}
 	}()
 
 	// 1. 애플리케이션 실행 상태 확인
 	if err := u.checkRunningApp(); err != nil {
-		return fmt.Errorf("애플리케이션 상태 확인 실패: %w", err)
+		return u.handleError("애플리케이션 상태 확인 실패: %w", err)
 	}
 
 	// 2. 서버 IP 가져오기
 	if err := u.getServerIP(); err != nil {
-		return fmt.Errorf("서버 IP 가져오기 실패: %w", err)
+		return u.handleError("서버 IP 가져오기 실패: %w", err)
 	}
 
 	// 3. 파일 백업
 	if err := u.backupFiles(); err != nil {
-		return fmt.Errorf("파일 백업 실패: %w", err)
+		return u.handleError("파일 백업 실패: %w", err)
 	}
-
+	u.backupCompleted = true // 백업 완료 상태 설정
 	// 4. 업데이트 파일 다운로드
 	if err := u.downloadUpdateFile(); err != nil {
 		return u.handleError("업데이트 파일 다운로드 실패", err)
@@ -184,6 +194,19 @@ func (u *Updater) downloadUpdateFile() error {
 	}
 	defer resp.Body.Close()
 
+	// 파일 생성 및 저장 로직 추가
+	out, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("파일 생성 실패: %v", err)
+	}
+	defer out.Close()
+
+	// 파일 쓰기
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return fmt.Errorf("파일 쓰기 실패: %v", err)
+	}
+
 	u.updateFile = filename
 	return nil
 }
@@ -212,9 +235,22 @@ func (u *Updater) verifyExtractedFiles() error {
 }
 
 func (u *Updater) restartApplication() error {
-	u.ui.SetCurrentStep(7)
-	u.ui.UpdateDetail("애플리케이션을 재시작하고 있습니다...")
-	// 애플리케이션 재시작 로직 구현
+	u.ui.UpdateDetail("애플리케이션 실행 준비중...")
+
+	cmd := exec.Command(fmt.Sprintf("./%s", u.appName), "--patch", "--fromVersion", u.fromVersion)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: windows.CREATE_NEW_CONSOLE,
+	}
+
+	u.ui.UpdateDetail("애플리케이션을 실행합니다...")
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("애플리케이션 실행 실패: %v", err)
+	}
+
+	// UI 종료 전 잠시 대기
+	time.Sleep(2 * time.Second)
+	u.ui.Close()
+
 	return nil
 }
 
@@ -225,9 +261,14 @@ func (u *Updater) restoreFiles() error {
 
 func (u *Updater) handleError(message string, err error) error {
 	u.logger.Error("%s: %v", message, err)
-	if restoreErr := u.restoreFiles(); restoreErr != nil {
-		u.logger.Error("파일 복원 실패: %v", restoreErr)
-		return fmt.Errorf("%s, 복원 실패: %v", message, err)
+	if u.backupCompleted {
+		u.ui.UpdateDetail("파일을 복원합니다...")
+		time.Sleep(3 * time.Second)
+		if restoreErr := u.restoreFiles(); restoreErr != nil {
+			u.logger.Error("파일 복원 실패: %v", restoreErr)
+			return fmt.Errorf("%s 및 복원 실패: %v", message, err)
+		}
+		return fmt.Errorf("%s, 파일이 복원됨: %v", message, err)
 	}
 	return fmt.Errorf("%s: %v", message, err)
 }
