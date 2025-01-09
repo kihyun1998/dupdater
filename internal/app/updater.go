@@ -5,6 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/kihyun1998/dupdater/pkg/utils"
+)
+
+const (
+	appName  = "simple_update_test.exe"
+	waitTime = 5 * time.Second // 충분한 대기 시간 설정
 )
 
 // Updater는 업데이트 프로세스의 전체 흐름을 제어하는 구조체입니다
@@ -127,10 +134,28 @@ func (u *Updater) processUpdate() error {
 }
 
 func (u *Updater) checkRunningApp() error {
+
 	u.ui.SetCurrentStep(0)
 	u.ui.UpdateDetail("애플리케이션 실행 상태를 확인하고 있습니다...")
-	// 애플리케이션 실행 상태 확인 구현
-	time.Sleep(1 * time.Second) // 임시 구현
+
+	isRunning, err := utils.CheckApplicationRunning(appName)
+	if err != nil {
+		return fmt.Errorf("앱 상태 확인 실패: %w", err)
+	}
+
+	if isRunning {
+		u.ui.UpdateDetail("실행 중인 애플리케이션 종료를 기다리는 중...")
+		if err := utils.WaitForApplicationToClose(appName, func(msg string) {
+			u.ui.UpdateDetail(msg)
+		}); err != nil {
+			return fmt.Errorf("앱 종료 대기 실패: %w", err)
+		}
+
+		// 프로세스 종료 후 Windows가 모든 리소스를 정리할 시간을 충분히 줌
+		u.ui.UpdateDetail("시스템 리소스 정리를 기다리는 중...")
+		time.Sleep(waitTime)
+	}
+
 	return nil
 }
 

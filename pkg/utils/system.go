@@ -95,3 +95,75 @@ func LaunchProcessWithElevation(execPath string, args string) error {
 
 	return nil
 }
+
+// CheckApplicationRunning은 지정된 프로세스가 실행 중인지 확인합니다
+func CheckApplicationRunning(appName string) (bool, error) {
+	cmd := exec.Command("tasklist", "/FI", fmt.Sprintf("IMAGENAME eq %s", appName))
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	output, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("프로세스 확인 중 오류: %v", err)
+	}
+
+	return strings.Contains(string(output), appName), nil
+}
+
+// WaitForApplicationToClose는 앱이 종료될 때까지 대기합니다
+func WaitForApplicationToClose(appName string, onWait func(string)) error {
+	const (
+		maxAttempts = 30
+		waitTime    = time.Second
+	)
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		isRunning, err := CheckApplicationRunning(appName)
+		if err != nil {
+			return fmt.Errorf("프로세스 상태 확인 실패: %v", err)
+		}
+
+		if !isRunning {
+			if onWait != nil {
+				onWait("애플리케이션이 성공적으로 종료되었습니다.")
+			}
+			return nil
+		}
+
+		if onWait != nil {
+			onWait(fmt.Sprintf("애플리케이션 종료 대기 중... (%d/%d)", attempt+1, maxAttempts))
+		}
+
+		time.Sleep(waitTime)
+	}
+
+	return fmt.Errorf("타임아웃: %d초 동안 애플리케이션이 종료되지 않았습니다", maxAttempts)
+}
+
+// LaunchApplication은 새 버전의 애플리케이션을 실행합니다
+func LaunchApplication(execPath string, args []string) error {
+	cmd := exec.Command(execPath, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: windows.CREATE_NEW_CONSOLE,
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("애플리케이션 실행 실패: %v", err)
+	}
+
+	return nil
+}
+
+// ElevateProcess는 프로세스를 관리자 권한으로 실행합니다
+func ElevateProcess(execPath string, args string) error {
+	verb := windows.StringToUTF16Ptr("runas")
+	exe := windows.StringToUTF16Ptr(execPath)
+	params := windows.StringToUTF16Ptr(args)
+	dir := windows.StringToUTF16Ptr("")
+
+	err := windows.ShellExecute(0, verb, exe, params, dir, windows.SW_NORMAL)
+	if err != nil {
+		return fmt.Errorf("관리자 권한으로 실행 실패: %v", err)
+	}
+
+	return nil
+}
