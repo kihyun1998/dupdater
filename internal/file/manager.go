@@ -167,6 +167,12 @@ func (m *Manager) DeleteFile(path string) error {
 // 내부 헬퍼 함수들
 // 파일 백업 함수
 func (m *Manager) backupFile(src, dest string) error {
+	// 먼저 Rename 시도
+	if err := os.Rename(src, dest); err == nil {
+		return nil
+	}
+
+	// Rename 실패시 복사 후 삭제 시도
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -181,6 +187,14 @@ func (m *Manager) backupFile(src, dest string) error {
 
 	if _, err := io.Copy(destFile, sourceFile); err != nil {
 		return err
+	}
+
+	// 여러 번 삭제 시도
+	for i := 0; i < 3; i++ {
+		if err := os.Remove(src); err == nil {
+			return nil
+		}
+		time.Sleep(time.Second)
 	}
 
 	return os.Remove(src)
