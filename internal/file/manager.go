@@ -164,20 +164,9 @@ func (m *Manager) DeleteFile(path string) error {
 	return nil
 }
 
-// GetCurrentDir는 현재 작업 디렉토리 경로를 반환합니다
-func (m *Manager) GetCurrentDir() string {
-	return m.currentDir
-}
-
 // 내부 헬퍼 함수들
 // 파일 백업 함수
 func (m *Manager) backupFile(src, dest string) error {
-	// 먼저 Rename 시도
-	if err := os.Rename(src, dest); err == nil {
-		return nil
-	}
-
-	// Rename 실패시 복사 후 삭제 시도
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -192,14 +181,6 @@ func (m *Manager) backupFile(src, dest string) error {
 
 	if _, err := io.Copy(destFile, sourceFile); err != nil {
 		return err
-	}
-
-	// 여러 번 삭제 시도
-	for i := 0; i < 3; i++ {
-		if err := os.Remove(src); err == nil {
-			return nil
-		}
-		time.Sleep(time.Second)
 	}
 
 	return os.Remove(src)
@@ -290,45 +271,30 @@ func (m *Manager) cleanCurrentDirectory() error {
 	if err != nil {
 		return err
 	}
+
 	for _, file := range files {
 		path := filepath.Join(m.currentDir, file.Name())
-		if file.IsDir() {
-			// 디렉토리도 재시도 로직 사용
-			for i := 0; i < 3; i++ {
-				err := os.RemoveAll(path)
-				if err == nil {
-					break
-				}
-				if i == 2 {
-					newPath := path + ".old"
-					if err := os.Rename(path, newPath); err == nil {
-						os.RemoveAll(newPath) // RemoveAll 사용
-					}
-				}
-				time.Sleep(time.Second)
+		for i := 0; i < 3; i++ {
+			var err error
+			if file.IsDir() {
+				err = os.RemoveAll(path)
+			} else {
+				err = os.Remove(path)
 			}
-		} else {
-			// 기존 파일 처리 로직 유지
-			for retries := 0; retries < 3; retries++ {
-				err := os.Remove(path)
-				if err == nil {
-					break
-				}
-				if os.IsPermission(err) {
-					return err
-				}
-				if retries == 2 {
-					newPath := path + ".old"
-					if err := os.Rename(path, newPath); err == nil {
-						if err := os.Remove(newPath); err != nil {
-							return fmt.Errorf("failed to remove renamed file %s: %v", newPath, err)
-						}
-					} else {
-						return fmt.Errorf("failed to rename and remove file %s: %v", path, err)
-					}
-				}
-				time.Sleep(time.Second)
+
+			if err == nil {
+				break
 			}
+
+			if i == 2 {
+				// 마지막 시도에서는 이름 변경 후 삭제 시도
+				newPath := path + ".old"
+				if os.Rename(path, newPath) == nil {
+					os.Remove(newPath)
+				}
+			}
+
+			time.Sleep(time.Second)
 		}
 	}
 	return nil
