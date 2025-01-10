@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	AppName    = "dupdater"
-	TotalSteps = 8 // 총 업데이트 단계 수
+	AppName       = "dupdater"
+	TargetAppName = "simple_update_test.exe"
+	TotalSteps    = 8 // 총 업데이트 단계 수
 )
 
 var (
@@ -88,7 +89,7 @@ func main() {
 
 	// 7. Updater 생성 및 시작
 	updater := app.New(app.Config{
-		AppName:         AppName,
+		AppName:         TargetAppName,
 		FromVersion:     *fromVersion,
 		ServerName:      *serverName,
 		BackupCompleted: false,
