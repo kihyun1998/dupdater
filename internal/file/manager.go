@@ -293,22 +293,10 @@ func (m *Manager) cleanCurrentDirectory() error {
 	for _, file := range files {
 		path := filepath.Join(m.currentDir, file.Name())
 		if file.IsDir() {
-			// 디렉토리도 재시도 로직 사용
-			for i := 0; i < 3; i++ {
-				err := os.RemoveAll(path)
-				if err == nil {
-					break
-				}
-				if i == 2 {
-					newPath := path + ".old"
-					if err := os.Rename(path, newPath); err == nil {
-						os.RemoveAll(newPath) // RemoveAll 사용
-					}
-				}
-				time.Sleep(time.Second)
+			if err := os.RemoveAll(path); err != nil {
+				return err
 			}
 		} else {
-			// 기존 파일 처리 로직 유지
 			for retries := 0; retries < 3; retries++ {
 				err := os.Remove(path)
 				if err == nil {
