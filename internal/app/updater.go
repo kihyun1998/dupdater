@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -238,25 +237,12 @@ func (u *Updater) verifyExtractedFiles() error {
 func (u *Updater) restartApplication() error {
 	u.ui.UpdateDetail("애플리케이션 실행 준비중...")
 
-	// 절대 경로 사용
-	exePath := filepath.Join(u.fileManager.GetCurrentDir(), u.appName)
-
-	// 실행 파일 존재 확인
-	if _, err := os.Stat(exePath); os.IsNotExist(err) {
-		return fmt.Errorf("실행 파일을 찾을 수 없습니다: %s", exePath)
-	}
-
-	cmd := exec.Command(exePath, "--patch", "--fromVersion", u.fromVersion)
-
-	// 작업 디렉토리 설정
-	cmd.Dir = u.fileManager.GetCurrentDir()
-
-	// 프로세스 생성 플래그 설정
+	cmd := exec.Command(fmt.Sprintf("./%s", u.appName), "--patch", "--fromVersion", u.fromVersion)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: windows.CREATE_NEW_CONSOLE,
 	}
 
-	u.ui.UpdateDetail(fmt.Sprintf("애플리케이션을 실행합니다: %s", exePath))
+	u.ui.UpdateDetail("애플리케이션을 실행합니다...")
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("애플리케이션 실행 실패: %v", err)
 	}
@@ -306,7 +292,6 @@ type FileManager interface {
 	Restore() error
 	ExtractZip(zipFile string) error
 	DeleteFile(path string) error
-	GetCurrentDir() string
 }
 
 // HashManager 인터페이스

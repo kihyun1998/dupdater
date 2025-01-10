@@ -164,11 +164,6 @@ func (m *Manager) DeleteFile(path string) error {
 	return nil
 }
 
-// GetCurrentDir는 현재 작업 디렉토리 경로를 반환합니다
-func (m *Manager) GetCurrentDir() string {
-	return m.currentDir
-}
-
 // 내부 헬퍼 함수들
 // 파일 백업 함수
 func (m *Manager) backupFile(src, dest string) error {
@@ -290,33 +285,30 @@ func (m *Manager) cleanCurrentDirectory() error {
 	if err != nil {
 		return err
 	}
+
 	for _, file := range files {
 		path := filepath.Join(m.currentDir, file.Name())
-		if file.IsDir() {
-			if err := os.RemoveAll(path); err != nil {
-				return err
+		for i := 0; i < 3; i++ {
+			var err error
+			if file.IsDir() {
+				err = os.RemoveAll(path)
+			} else {
+				err = os.Remove(path)
 			}
-		} else {
-			for retries := 0; retries < 3; retries++ {
-				err := os.Remove(path)
-				if err == nil {
-					break
-				}
-				if os.IsPermission(err) {
-					return err
-				}
-				if retries == 2 {
-					newPath := path + ".old"
-					if err := os.Rename(path, newPath); err == nil {
-						if err := os.Remove(newPath); err != nil {
-							return fmt.Errorf("failed to remove renamed file %s: %v", newPath, err)
-						}
-					} else {
-						return fmt.Errorf("failed to rename and remove file %s: %v", path, err)
-					}
-				}
-				time.Sleep(time.Second)
+
+			if err == nil {
+				break
 			}
+
+			if i == 2 {
+				// 마지막 시도에서는 이름 변경 후 삭제 시도
+				newPath := path + ".old"
+				if os.Rename(path, newPath) == nil {
+					os.Remove(newPath)
+				}
+			}
+
+			time.Sleep(time.Second)
 		}
 	}
 	return nil

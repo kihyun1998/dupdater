@@ -120,6 +120,5 @@ func getCurrentDir() string {
 		fmt.Printf("Failed to get executable path: %v\n", err)
 		os.Exit(1)
 	}
-	// dupdater 폴더가 아닌 상위 디렉토리를 반환
-	return filepath.Dir(filepath.Dir(dir))
+	return filepath.Dir(dir)
 }
