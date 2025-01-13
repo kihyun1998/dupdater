@@ -3,6 +3,7 @@ module github.com/kihyun1998/dupdater
 go 1.22.2
 
 require (
+	fyne.io/fyne v1.4.3
 	fyne.io/fyne/v2 v2.5.3
 	golang.org/x/sys v0.29.0
 )
