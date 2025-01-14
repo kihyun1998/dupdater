@@ -23,13 +23,14 @@ const (
 // StepIndicator는 업데이트 과정의 각 단계를 표시하는 컴포넌트입니다
 type StepIndicator struct {
 	widget.BaseWidget
-	title      string
-	detail     string
-	status     StepStatus
+	title  string     // 단계 제목
+	detail string     // 상세 설명
+	status StepStatus // 현재 상태
+
 	container  *fyne.Container
-	icon       *canvas.Image
-	titleText  *canvas.Text
-	detailText *canvas.Text
+	icon       *canvas.Image // 상태 아이콘
+	titleText  *canvas.Text  // 제목 텍스트
+	detailText *canvas.Text  // 상세 설명 텍스트
 }
 
 // NewStepIndicator는 새로운 StepIndicator를 생성합니다
@@ -51,19 +52,18 @@ func (s *StepIndicator) CreateRenderer() fyne.WidgetRenderer {
 
 // setupUI는 UI 컴포넌트를 초기화합니다
 func (s *StepIndicator) setupUI() {
-	// 아이콘 설정
-	s.icon = canvas.NewImageFromResource(resourcePendingIconSvg)
-	s.icon.Resize(fyne.NewSize(24, 24))
+	// 아이콘 설정 (기본값은 대기 상태)
+	s.icon = canvas.NewImageFromResource(resourceProgressIconSvg)
+	s.icon.Resize(fyne.NewSize(20, 20))
 	s.icon.FillMode = canvas.ImageFillOriginal
 
 	// 제목 텍스트
 	s.titleText = canvas.NewText(s.title, theme.TextColor)
-	s.titleText.TextStyle = fyne.TextStyle{Bold: true}
-	s.titleText.TextSize = 14
+	s.titleText.TextSize = theme.FontSizeMedium
 
 	// 상세 설명 텍스트
 	s.detailText = canvas.NewText(s.detail, theme.SubTextColor)
-	s.detailText.TextSize = 12
+	s.detailText.TextSize = theme.FontSizeSmall
 
 	// 텍스트 컨테이너
 	textContainer := container.NewVBox(
@@ -71,52 +71,46 @@ func (s *StepIndicator) setupUI() {
 		s.detailText,
 	)
 
-	// 메인 컨테이너
+	// 메인 컨테이너 (아이콘 + 텍스트)
 	s.container = container.NewHBox(
-		s.icon,
-		container.NewPadded(textContainer),
+		container.NewPadded(s.icon),
+		textContainer,
 	)
 }
 
 // UpdateStatus는 단계의 상태를 업데이트합니다
 func (s *StepIndicator) UpdateStatus(status StepStatus) {
 	s.status = status
-	s.updateUI()
+
+	// 상태에 따른 아이콘과 색상 업데이트
+	var iconResource fyne.Resource
+	var titleColor color.Color
+
+	switch s.status {
+	case StepCompleted:
+		iconResource = resourceCompletedIconSvg
+		titleColor = theme.SuccessColor
+	case StepInProgress:
+		iconResource = resourceProgressIconSvg
+		titleColor = theme.InfoColor
+	case StepFailed:
+		iconResource = resourceFailedIconSvg
+		titleColor = theme.ErrorColor
+	default:
+		iconResource = resourceProgressIconSvg
+		titleColor = theme.SubTextColor
+	}
+
+	s.icon.Resource = iconResource
+	s.titleText.Color = titleColor
+	s.icon.Refresh()
+	s.titleText.Refresh()
+	s.container.Refresh()
 }
 
 // UpdateDetail은 상세 설명을 업데이트합니다
 func (s *StepIndicator) UpdateDetail(detail string) {
 	s.detail = detail
-	if s.detailText != nil {
-		s.detailText.Text = detail
-		s.detailText.Refresh()
-	}
-}
-
-// updateUI는 상태에 따라 UI를 업데이트합니다
-func (s *StepIndicator) updateUI() {
-	var iconResource fyne.Resource
-	var textColor color.Color
-
-	switch s.status {
-	case StepPending:
-		iconResource = resourcePendingIconSvg
-		textColor = theme.SubTextColor
-	case StepInProgress:
-		iconResource = resourceProgressIconSvg
-		textColor = theme.InfoColor
-	case StepCompleted:
-		iconResource = resourceCompletedIconSvg
-		textColor = theme.SuccessColor
-	case StepFailed:
-		iconResource = resourceFailedIconSvg
-		textColor = theme.ErrorColor
-	}
-
-	s.icon.Resource = iconResource
-	s.titleText.Color = textColor
-
-	s.icon.Refresh()
-	s.titleText.Refresh()
-	s.container.Refresh()
+	s.detailText.Text = detail
+	s.detailText.Refresh()
 }

@@ -6,7 +6,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/widget"
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/ui/components"
 )
@@ -26,9 +25,8 @@ type Manager struct {
 	logger     *logger.Logger
 
 	// UI 컴포넌트들
-	headerCard     *components.HeaderCard
-	statusCard     *components.StatusCard
-	stepIndicators []*components.StepIndicator
+	statusCard     *components.StatusCard      // 상태 표시 컴포넌트
+	stepIndicators []*components.StepIndicator // 단계 표시 컴포넌트들
 	contentBox     *fyne.Container
 
 	// 복구 핸들러
@@ -37,11 +35,9 @@ type Manager struct {
 
 // Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
 type Config struct {
-	AppName     string
-	FromVersion string
-	ToVersion   string
-	TotalSteps  int
-	Logger      *logger.Logger
+	AppName    string
+	TotalSteps int
+	Logger     *logger.Logger
 }
 
 // New는 새로운 Manager 인스턴스를 생성합니다
@@ -52,9 +48,7 @@ func New(config Config) *Manager {
 	}
 
 	// 메인 윈도우 생성
-	manager.mainWindow = manager.app.NewWindow(
-		fmt.Sprintf("%s Updater", config.AppName),
-	)
+	manager.mainWindow = manager.app.NewWindow(fmt.Sprintf("%s Updater", config.AppName))
 
 	// UI 초기화
 	manager.initializeUI(config)
@@ -64,21 +58,14 @@ func New(config Config) *Manager {
 
 // initializeUI는 UI 컴포넌트들을 초기화하고 배치합니다
 func (m *Manager) initializeUI(config Config) {
-	// 헤더 카드 생성
-	m.headerCard = components.NewHeaderCard(
-		fmt.Sprintf("%s Update", config.AppName),
-		config.FromVersion,
-		config.ToVersion,
-	)
-
 	// 상태 카드 생성
 	m.statusCard = components.NewStatusCard()
 
-	// 단계 표시기 생성
+	// 단계 표시기들 생성
 	m.stepIndicators = make([]*components.StepIndicator, 3)
-	m.stepIndicators[0] = components.NewStepIndicator("백업", "파일 백업 준비 중...")
-	m.stepIndicators[1] = components.NewStepIndicator("다운로드", "업데이트 파일 다운로드 대기 중...")
-	m.stepIndicators[2] = components.NewStepIndicator("설치", "설치 준비 중...")
+	m.stepIndicators[0] = components.NewStepIndicator("Backup completed", "Files backed up successfully")
+	m.stepIndicators[1] = components.NewStepIndicator("Download completed", "Update package verified")
+	m.stepIndicators[2] = components.NewStepIndicator("Installing update", "This may take a few minutes")
 
 	// 단계 표시기 컨테이너
 	stepsContainer := container.NewVBox()
@@ -88,19 +75,13 @@ func (m *Manager) initializeUI(config Config) {
 
 	// 전체 레이아웃 구성
 	m.contentBox = container.NewVBox(
-		m.headerCard,
-		widget.NewSeparator(),
-		stepsContainer, // 순서 변경 - 단계 표시를 먼저 보여줌
-		widget.NewSeparator(),
-		m.statusCard, // 상태 카드를 마지막에 배치
+		m.statusCard,   // 상태 카드를 최상단에 배치
+		stepsContainer, // 단계 표시기들을 그 아래에 배치
 	)
 
-	// 패딩 추가
-	paddedContent := container.NewPadded(m.contentBox)
-
 	// 메인 윈도우 설정
-	m.mainWindow.SetContent(paddedContent)
-	m.mainWindow.Resize(fyne.NewSize(500, 400))
+	m.mainWindow.SetContent(container.NewPadded(m.contentBox))
+	m.mainWindow.Resize(fyne.NewSize(400, 500))
 	m.mainWindow.CenterOnScreen()
 	m.mainWindow.SetFixedSize(true)
 }
@@ -123,12 +104,7 @@ func (m *Manager) SetCurrentStep(step int) {
 
 // UpdateDetail은 상세 메시지를 업데이트합니다
 func (m *Manager) UpdateDetail(message string) {
-	m.statusCard.UpdateStatus("업데이트 진행 중", message)
-}
-
-// ShowProgress는 다운로드 진행상황을 표시합니다
-func (m *Manager) ShowProgress(current, total int64) {
-	m.statusCard.SetProgress(current, total)
+	m.statusCard.UpdateStatus("System Update", message)
 }
 
 // ShowError는 에러 메시지를 표시합니다
@@ -146,25 +122,17 @@ func (m *Manager) ShowError(err error) {
 	}
 }
 
-// triggerRestore는 복구 프로세스를 시작합니다
-func (m *Manager) triggerRestore() {
-	if m.onRestore != nil {
-		go func() {
-			m.UpdateDetail("파일 복구 중...")
-			m.onRestore()
-		}()
-	}
+// ShowProgress는 다운로드 진행률을 표시합니다
+func (m *Manager) ShowProgress(current, total int64) {
+	m.statusCard.SetProgress(current, total)
 }
 
-// ShowRestoring은 복구 진행 중임을 표시합니다
+// ShowRestoring은 복원 진행 중임을 표시합니다
 func (m *Manager) ShowRestoring() {
-	for _, step := range m.stepIndicators {
-		step.UpdateStatus(components.StepPending)
-	}
-	m.statusCard.SetRestoring("파일을 원래 상태로 복원하고 있습니다...")
+	m.statusCard.SetRestoring("Restoring files...")
 }
 
-// ShowRestoreComplete는 복구 완료를 표시합니다
+// ShowRestoreComplete는 복원 완료를 표시합니다
 func (m *Manager) ShowRestoreComplete() {
 	m.statusCard.SetRestoreComplete()
 }

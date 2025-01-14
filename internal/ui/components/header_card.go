@@ -53,8 +53,8 @@ func (h *HeaderCard) setupUI() {
 	h.versionText.Alignment = fyne.TextAlignTrailing
 
 	// 구분선
-	divider := canvas.NewLine(theme.DividerColor)
-	divider.StrokeWidth = 1
+	// divider := canvas.NewLine(theme.DividerColor)
+	// divider.StrokeWidth = 1
 
 	// 헤더 컨테이너 (타이틀과 버전 정보)
 	headerContainer := container.NewHBox(
@@ -66,7 +66,7 @@ func (h *HeaderCard) setupUI() {
 	// 메인 컨테이너
 	h.container = container.NewVBox(
 		headerContainer,
-		divider,
+		// divider,
 	)
 
 	// 패딩 추가
