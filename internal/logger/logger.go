@@ -61,7 +61,7 @@ func New(config Config) (*Logger, error) {
 		if err != nil {
 			return nil, fmt.Errorf("홈 디렉토리 찾기 실패: %w", err)
 		}
-		config.LogPath = filepath.Join(homeDir, ".testfolder", "logs")
+		config.LogPath = filepath.Join(homeDir, ".testfolder", "logs", "updater.log")
 	}
 
 	if config.MaxSize == 0 {
@@ -178,8 +178,6 @@ func (l *Logger) Close() error {
 	}
 	return nil
 }
-
-// 내부 헬퍼 메서드들
 
 // checkRotate는 로그 파일 크기를 확인하고 필요시 순환합니다
 func (l *Logger) checkRotate() error {
