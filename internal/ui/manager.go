@@ -27,7 +27,7 @@ type Manager struct {
 
 	// UI 컴포넌트들
 	headerCard     *components.HeaderCard
-	progressCard   *components.ProgressCard
+	statusCard     *components.StatusCard
 	stepIndicators []*components.StepIndicator
 	contentBox     *fyne.Container
 
@@ -71,8 +71,8 @@ func (m *Manager) initializeUI(config Config) {
 		config.ToVersion,
 	)
 
-	// 진행 카드 생성
-	m.progressCard = components.NewProgressCard()
+	// 상태 카드 생성
+	m.statusCard = components.NewStatusCard()
 
 	// 단계 표시기 생성
 	m.stepIndicators = make([]*components.StepIndicator, 3)
@@ -90,9 +90,9 @@ func (m *Manager) initializeUI(config Config) {
 	m.contentBox = container.NewVBox(
 		m.headerCard,
 		widget.NewSeparator(),
-		m.progressCard,
+		stepsContainer, // 순서 변경 - 단계 표시를 먼저 보여줌
 		widget.NewSeparator(),
-		stepsContainer,
+		m.statusCard, // 상태 카드를 마지막에 배치
 	)
 
 	// 패딩 추가
@@ -105,7 +105,7 @@ func (m *Manager) initializeUI(config Config) {
 	m.mainWindow.SetFixedSize(true)
 }
 
-// UI Manager 인터페이스 구현
+// SetCurrentStep은 현재 진행 단계를 업데이트합니다
 func (m *Manager) SetCurrentStep(step int) {
 	if step >= 0 && step < len(m.stepIndicators) {
 		// 이전 단계들을 완료 상태로 설정
@@ -123,11 +123,12 @@ func (m *Manager) SetCurrentStep(step int) {
 
 // UpdateDetail은 상세 메시지를 업데이트합니다
 func (m *Manager) UpdateDetail(message string) {
-	m.progressCard.UpdateMessage(message)
+	m.statusCard.UpdateStatus("업데이트 진행 중", message)
 }
 
+// ShowProgress는 다운로드 진행상황을 표시합니다
 func (m *Manager) ShowProgress(current, total int64) {
-	m.progressCard.UpdateProgress(current, total)
+	m.statusCard.SetProgress(current, total)
 }
 
 // ShowError는 에러 메시지를 표시합니다
@@ -136,7 +137,13 @@ func (m *Manager) ShowError(err error) {
 	for _, step := range m.stepIndicators {
 		step.UpdateStatus(components.StepFailed)
 	}
-	m.progressCard.SetError(err.Error())
+	m.statusCard.SetError(err.Error())
+
+	// 복구 가능한 경우 복구 UI 표시
+	if m.onRestore != nil {
+		m.ShowRestoring()
+		go m.onRestore()
+	}
 }
 
 // triggerRestore는 복구 프로세스를 시작합니다
@@ -147,6 +154,19 @@ func (m *Manager) triggerRestore() {
 			m.onRestore()
 		}()
 	}
+}
+
+// ShowRestoring은 복구 진행 중임을 표시합니다
+func (m *Manager) ShowRestoring() {
+	for _, step := range m.stepIndicators {
+		step.UpdateStatus(components.StepPending)
+	}
+	m.statusCard.SetRestoring("파일을 원래 상태로 복원하고 있습니다...")
+}
+
+// ShowRestoreComplete는 복구 완료를 표시합니다
+func (m *Manager) ShowRestoreComplete() {
+	m.statusCard.SetRestoreComplete()
 }
 
 // SetRestoreHandler는 복구 핸들러를 설정합니다
@@ -163,37 +183,3 @@ func (m *Manager) Run() {
 func (m *Manager) Close() {
 	m.mainWindow.Close()
 }
-
-// // ShowProgress는 진행률을 주기적으로 업데이트합니다 (다운로드 등에서 사용)
-// func (m *Manager) ShowProgress(current, total int64) {
-// 	progress := float64(current) / float64(total) * 100
-// 	m.state.Progress = progress
-// 	m.progressBar.SetValue(progress / 100)
-// 	m.progressLabel.SetText(fmt.Sprintf("%.1f%%", progress))
-
-// 	// 진행 상태 메시지 업데이트
-// 	speed := float64(current) / (1024 * 1024) // MB 단위로 변환
-// 	totalSize := float64(total) / (1024 * 1024)
-// 	m.UpdateDetail(fmt.Sprintf("다운로드 중... %.1f MB / %.1f MB", speed, totalSize))
-// }
-
-// // ShowSuccess는 성공 메시지를 표시합니다
-// func (m *Manager) ShowSuccess(message string) {
-// 	successIcon := widget.NewIcon(theme.ConfirmIcon())
-// 	successLabel := widget.NewLabelWithStyle(message, fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-
-// 	content := container.NewVBox(
-// 		container.NewHBox(layout.NewSpacer(), successIcon, successLabel, layout.NewSpacer()),
-// 	)
-
-// 	m.statusCard = widget.NewCard("", "", content)
-// 	m.contentBox.Remove(m.errorCard)
-// 	m.contentBox.Add(m.statusCard)
-// 	m.mainWindow.Content().Refresh()
-
-// 	// 3초 후 자동으로 창 닫기
-// 	go func() {
-// 		time.Sleep(3 * time.Second)
-// 		m.mainWindow.Close()
-// 	}()
-// }

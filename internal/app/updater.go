@@ -262,14 +262,16 @@ func (u *Updater) restoreFiles() error {
 func (u *Updater) handleError(message string, err error) error {
 	u.logger.Error("%s: %v", message, err)
 	if u.backupCompleted {
-		u.ui.UpdateDetail("파일을 복원합니다...")
-		time.Sleep(3 * time.Second)
+		u.ui.ShowRestoring()
 		if restoreErr := u.restoreFiles(); restoreErr != nil {
 			u.logger.Error("파일 복원 실패: %v", restoreErr)
+			u.ui.ShowError(fmt.Errorf("복원 실패: %v", restoreErr))
 			return fmt.Errorf("%s 및 복원 실패: %v", message, err)
 		}
+		u.ui.ShowRestoreComplete()
 		return fmt.Errorf("%s, 파일이 복원됨: %v", message, err)
 	}
+	u.ui.ShowError(fmt.Errorf("%s: %v", message, err))
 	return fmt.Errorf("%s: %v", message, err)
 }
 
@@ -309,4 +311,6 @@ type UIManager interface {
 	Run()
 	Close()
 	SetRestoreHandler(handler func())
+	ShowRestoring()
+	ShowRestoreComplete()
 }
