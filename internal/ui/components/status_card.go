@@ -1,6 +1,8 @@
 package components
 
 import (
+	"fmt"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
@@ -12,16 +14,17 @@ import (
 type StatusCard struct {
 	widget.BaseWidget
 	container    *fyne.Container
-	titleText    *canvas.Text        // "System Update"
-	subtitleText *canvas.Text        // 상태 메시지 (예: "Please keep the app open")
-	progressBar  *widget.ProgressBar // 진행 상태 표시용 (복원 시에만 표시)
+	titleText    *canvas.Text
+	versionText  *canvas.Text
+	progressBar  *widget.ProgressBar
+	subtitleText *canvas.Text
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
-func NewStatusCard() *StatusCard {
+func NewStatusCard(fromVersion, toVersion string) *StatusCard {
 	card := &StatusCard{}
 	card.ExtendBaseWidget(card)
-	card.setupUI()
+	card.setupUI(fromVersion, toVersion)
 	return card
 }
 
@@ -31,65 +34,78 @@ func (s *StatusCard) CreateRenderer() fyne.WidgetRenderer {
 }
 
 // setupUI는 UI 컴포넌트를 초기화합니다
-func (s *StatusCard) setupUI() {
-	// 메인 타이틀
-	s.titleText = canvas.NewText("System Update", theme.TextColor)
-	s.titleText.TextSize = theme.FontSizeLarge
+func (s *StatusCard) setupUI(fromVersion, toVersion string) {
+	// 타이틀
+	s.titleText = canvas.NewText("새로운 업데이트가 있습니다", theme.TextColor)
+	s.titleText.TextSize = 16
+	s.titleText.TextStyle = fyne.TextStyle{Bold: true}
 
-	// 서브타이틀 (상태 메시지)
-	s.subtitleText = canvas.NewText("", theme.SubTextColor)
-	s.subtitleText.TextSize = theme.FontSizeSmall
+	// 버전 정보
+	s.versionText = canvas.NewText(fmt.Sprintf("%s → %s", fromVersion, toVersion), theme.SubTextColor)
+	s.versionText.TextSize = 14
 
-	// 진행 바 (기본적으로 숨김)
+	// 진행 바
 	s.progressBar = widget.NewProgressBar()
-	s.progressBar.Hide()
 
-	// 컨테이너 구성
+	// 상태 메시지
+	s.subtitleText = canvas.NewText("업데이트가 완료되면 자동으로 앱이 다시 시작됩니다.", theme.SubTextColor)
+	s.subtitleText.TextSize = 12
+
+	// 레이아웃 구성
 	s.container = container.NewVBox(
-		s.titleText,
-		s.subtitleText,
-		s.progressBar,
+		container.NewVBox(
+			s.titleText,
+			s.versionText,
+		),
+		container.NewPadded(s.progressBar),
+		container.NewPadded(s.subtitleText),
 	)
-}
-
-// UpdateStatus는 상태 메시지를 업데이트합니다
-func (s *StatusCard) UpdateStatus(status, detail string) {
-	s.titleText.Text = "System Update"
-	s.subtitleText.Text = detail
-	s.subtitleText.Color = theme.SubTextColor
-	s.subtitleText.Refresh()
-	s.progressBar.Hide()
-	s.container.Refresh()
 }
 
 // SetError는 에러 상태를 표시합니다
 func (s *StatusCard) SetError(errMsg string) {
-	s.subtitleText.Text = "Update failed"
+	s.titleText.Text = "업데이트 중 오류가 발생했습니다"
+	s.titleText.Color = theme.ErrorColor
+	s.subtitleText.Text = errMsg
 	s.subtitleText.Color = theme.ErrorColor
-	s.subtitleText.Refresh()
 	s.progressBar.Hide()
 	s.container.Refresh()
 }
 
 // SetRestoring는 복원 진행 상태를 표시합니다
 func (s *StatusCard) SetRestoring(msg string) {
-	s.subtitleText.Text = "Restoring previous version"
+	s.titleText.Text = "이전 버전으로 복원 중"
+	s.titleText.Color = theme.WarningColor
+	s.subtitleText.Text = msg
 	s.subtitleText.Color = theme.WarningColor
 	s.progressBar.Show()
 	s.container.Refresh()
 }
 
-// SetProgress는 진행률을 업데이트합니다
-func (s *StatusCard) SetProgress(current, total int64) {
-	// 진행률 계산 (0.0 ~ 1.0)
-	progress := float64(current) / float64(total)
-	s.progressBar.SetValue(progress)
-}
-
 // SetRestoreComplete는 복원 완료 상태를 표시합니다
 func (s *StatusCard) SetRestoreComplete() {
-	s.subtitleText.Text = "Restoration completed"
+	s.titleText.Text = "복원이 완료되었습니다"
+	s.titleText.Color = theme.SuccessColor
+	s.subtitleText.Text = "앱이 곧 다시 시작됩니다"
 	s.subtitleText.Color = theme.SuccessColor
 	s.progressBar.Hide()
+	s.container.Refresh()
+}
+
+// UpdateStatus는 상태와 진행률을 업데이트합니다
+func (s *StatusCard) UpdateStatus(progress float64, message string) {
+	s.titleText.Text = "업데이트 진행 중"
+	s.titleText.Color = theme.TextColor
+	s.subtitleText.Text = message
+	s.subtitleText.Color = theme.SubTextColor
+	s.progressBar.SetValue(progress)
+	s.progressBar.Show()
+	s.container.Refresh()
+}
+
+// SetProgress는 다운로드 진행률을 업데이트합니다
+func (s *StatusCard) SetProgress(current, total int64) {
+	progress := float64(current) / float64(total)
+	s.progressBar.SetValue(progress)
 	s.container.Refresh()
 }

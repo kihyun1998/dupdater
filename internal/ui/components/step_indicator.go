@@ -92,7 +92,7 @@ func (s *StepIndicator) UpdateStatus(status StepStatus) {
 		titleColor = theme.SuccessColor
 	case StepInProgress:
 		iconResource = resourceProgressIconSvg
-		titleColor = theme.InfoColor
+		// titleColor = theme.InfoColor
 	case StepFailed:
 		iconResource = resourceFailedIconSvg
 		titleColor = theme.ErrorColor

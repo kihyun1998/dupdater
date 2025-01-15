@@ -25,9 +25,9 @@ type Manager struct {
 	logger     *logger.Logger
 
 	// UI 컴포넌트들
-	statusCard     *components.StatusCard      // 상태 표시 컴포넌트
-	stepIndicators []*components.StepIndicator // 단계 표시 컴포넌트들
-	contentBox     *fyne.Container
+	statusCard *components.StatusCard // 상태 표시 컴포넌트
+
+	contentBox *fyne.Container
 
 	// 복구 핸들러
 	onRestore func()
@@ -35,9 +35,11 @@ type Manager struct {
 
 // Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
 type Config struct {
-	AppName    string
-	TotalSteps int
-	Logger     *logger.Logger
+	AppName     string
+	TotalSteps  int
+	FromVersion string
+	ToVersion   string
+	Logger      *logger.Logger
 }
 
 // New는 새로운 Manager 인스턴스를 생성합니다
@@ -59,60 +61,43 @@ func New(config Config) *Manager {
 // initializeUI는 UI 컴포넌트들을 초기화하고 배치합니다
 func (m *Manager) initializeUI(config Config) {
 	// 상태 카드 생성
-	m.statusCard = components.NewStatusCard()
+	m.statusCard = components.NewStatusCard(config.FromVersion, config.ToVersion)
 
-	// 단계 표시기들 생성
-	m.stepIndicators = make([]*components.StepIndicator, 3)
-	m.stepIndicators[0] = components.NewStepIndicator("Backup completed", "Files backed up successfully")
-	m.stepIndicators[1] = components.NewStepIndicator("Download completed", "Update package verified")
-	m.stepIndicators[2] = components.NewStepIndicator("Installing update", "This may take a few minutes")
-
-	// 단계 표시기 컨테이너
-	stepsContainer := container.NewVBox()
-	for _, step := range m.stepIndicators {
-		stepsContainer.Add(step)
-	}
-
-	// 전체 레이아웃 구성
-	m.contentBox = container.NewVBox(
-		m.statusCard,   // 상태 카드를 최상단에 배치
-		stepsContainer, // 단계 표시기들을 그 아래에 배치
-	)
+	// 전체 레이아웃 구성 - 심플하게
+	content := container.NewPadded(m.statusCard)
 
 	// 메인 윈도우 설정
-	m.mainWindow.SetContent(container.NewPadded(m.contentBox))
-	m.mainWindow.Resize(fyne.NewSize(400, 500))
+	m.mainWindow.SetContent(content)
+	m.mainWindow.Resize(fyne.NewSize(400, 200))
 	m.mainWindow.CenterOnScreen()
 	m.mainWindow.SetFixedSize(true)
 }
 
 // SetCurrentStep은 현재 진행 단계를 업데이트합니다
 func (m *Manager) SetCurrentStep(step int) {
-	if step >= 0 && step < len(m.stepIndicators) {
-		// 이전 단계들을 완료 상태로 설정
-		for i := 0; i < step; i++ {
-			m.stepIndicators[i].UpdateStatus(components.StepCompleted)
-		}
-		// 현재 단계를 진행 중 상태로 설정
-		m.stepIndicators[step].UpdateStatus(components.StepInProgress)
-		// 다음 단계들을 대기 상태로 설정
-		for i := step + 1; i < len(m.stepIndicators); i++ {
-			m.stepIndicators[i].UpdateStatus(components.StepPending)
-		}
+	// step에 따른 적절한 메시지 설정
+	messages := map[int]string{
+		0: "앱 상태를 확인하고 있습니다...",
+		1: "업데이트 정보를 확인하고 있습니다...",
+		2: "업데이트 파일을 준비하고 있습니다...",
+		3: "업데이트 파일을 다운로드하고 있습니다...",
+		4: "업데이트 파일을 검증하고 있습니다...",
+		5: "업데이트를 설치하고 있습니다...",
+		6: "설치를 확인하고 있습니다...",
+		7: "업데이트가 완료되었습니다.",
+	}
+	if msg, ok := messages[step]; ok {
+		m.statusCard.UpdateStatus(float64(step)/7.0, msg)
 	}
 }
 
 // UpdateDetail은 상세 메시지를 업데이트합니다
 func (m *Manager) UpdateDetail(message string) {
-	m.statusCard.UpdateStatus("System Update", message)
+	m.statusCard.UpdateStatus(-1, message) // -1은 진행률 변경 없음을 의미
 }
 
 // ShowError는 에러 메시지를 표시합니다
 func (m *Manager) ShowError(err error) {
-	// 모든 단계를 실패 상태로 표시
-	for _, step := range m.stepIndicators {
-		step.UpdateStatus(components.StepFailed)
-	}
 	m.statusCard.SetError(err.Error())
 
 	// 복구 가능한 경우 복구 UI 표시
@@ -129,7 +114,7 @@ func (m *Manager) ShowProgress(current, total int64) {
 
 // ShowRestoring은 복원 진행 중임을 표시합니다
 func (m *Manager) ShowRestoring() {
-	m.statusCard.SetRestoring("Restoring files...")
+	m.statusCard.SetRestoring("이전 버전으로 복원중...")
 }
 
 // ShowRestoreComplete는 복원 완료를 표시합니다
