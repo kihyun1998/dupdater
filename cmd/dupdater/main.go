@@ -61,9 +61,11 @@ func main() {
 
 	// 3. UI 매니저 초기화
 	uiManager := ui.New(ui.Config{
-		AppName:    AppName,
-		TotalSteps: TotalSteps,
-		Logger:     logger,
+		AppName:     AppName,
+		TotalSteps:  TotalSteps,
+		Logger:      logger,
+		FromVersion: *fromVersion,
+		ToVersion:   "1.1.0", // 테스트용 버전
 	})
 
 	// 4. 네트워크 매니저 초기화

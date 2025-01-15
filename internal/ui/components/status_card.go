@@ -98,7 +98,12 @@ func (s *StatusCard) UpdateStatus(progress float64, message string) {
 	s.titleText.Color = theme.TextColor
 	s.subtitleText.Text = message
 	s.subtitleText.Color = theme.SubTextColor
-	s.progressBar.SetValue(progress)
+
+	// 진행률 업데이트를 명시적으로 수행
+	if progress >= 0 { // -1이 아닐 때만 진행률 업데이트
+		s.progressBar.SetValue(progress)
+		s.progressBar.Refresh() // 명시적 리프레시 추가
+	}
 	s.progressBar.Show()
 	s.container.Refresh()
 }

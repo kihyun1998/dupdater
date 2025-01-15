@@ -87,7 +87,13 @@ func (m *Manager) SetCurrentStep(step int) {
 		7: "업데이트가 완료되었습니다.",
 	}
 	if msg, ok := messages[step]; ok {
+		// 진행률 계산을 float64로 명시적 변환
 		progress := float64(step) / float64(m.totalSteps-1)
+
+		// 로깅 추가
+		m.logger.Info("업데이트 진행률: %.2f%%, 단계: %d/%d", progress*100, step, m.totalSteps-1)
+
+		// UI 업데이트
 		m.statusCard.UpdateStatus(progress, msg)
 	}
 }
