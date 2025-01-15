@@ -23,11 +23,10 @@ type Manager struct {
 	app        fyne.App
 	mainWindow fyne.Window
 	logger     *logger.Logger
+	totalSteps int
 
 	// UI 컴포넌트들
 	statusCard *components.StatusCard // 상태 표시 컴포넌트
-
-	contentBox *fyne.Container
 
 	// 복구 핸들러
 	onRestore func()
@@ -45,8 +44,9 @@ type Config struct {
 // New는 새로운 Manager 인스턴스를 생성합니다
 func New(config Config) *Manager {
 	manager := &Manager{
-		app:    app.New(),
-		logger: config.Logger,
+		app:        app.New(),
+		logger:     config.Logger,
+		totalSteps: config.TotalSteps,
 	}
 
 	// 메인 윈도우 생성
@@ -87,7 +87,8 @@ func (m *Manager) SetCurrentStep(step int) {
 		7: "업데이트가 완료되었습니다.",
 	}
 	if msg, ok := messages[step]; ok {
-		m.statusCard.UpdateStatus(float64(step)/7.0, msg)
+		progress := float64(step) / float64(m.totalSteps-1)
+		m.statusCard.UpdateStatus(progress, msg)
 	}
 }
 
