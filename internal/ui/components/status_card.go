@@ -2,6 +2,8 @@ package components
 
 import (
 	"fmt"
+	"math"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -18,6 +20,12 @@ type StatusCard struct {
 	versionText  *canvas.Text
 	progressBar  *widget.ProgressBar
 	subtitleText *canvas.Text
+
+	// 애니메이션을 위한 필드 추가
+	targetProgress  float64
+	currentProgress float64
+	animating       bool
+	ticker          *time.Ticker
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
@@ -99,11 +107,11 @@ func (s *StatusCard) UpdateStatus(progress float64, message string) {
 	s.subtitleText.Text = message
 	s.subtitleText.Color = theme.SubTextColor
 
-	// 진행률 업데이트를 명시적으로 수행
-	if progress >= 0 { // -1이 아닐 때만 진행률 업데이트
-		s.progressBar.SetValue(progress)
-		s.progressBar.Refresh() // 명시적 리프레시 추가
+	if progress >= 0 {
+		s.targetProgress = progress
+		s.animateProgress()
 	}
+
 	s.progressBar.Show()
 	s.container.Refresh()
 }
@@ -113,4 +121,40 @@ func (s *StatusCard) SetProgress(current, total int64) {
 	progress := float64(current) / float64(total)
 	s.progressBar.SetValue(progress)
 	s.container.Refresh()
+}
+
+// 부드러운 진행률 업데이트를 위한 메서드
+func (s *StatusCard) animateProgress() {
+	if s.ticker != nil {
+		s.ticker.Stop()
+	}
+
+	s.animating = true
+	s.ticker = time.NewTicker(16 * time.Millisecond) // 약 60FPS
+
+	go func() {
+		defer s.ticker.Stop()
+
+		for range s.ticker.C {
+			if !s.animating {
+				return
+			}
+
+			diff := s.targetProgress - s.currentProgress
+			// 남은 거리의 10%씩 이동 (부드러운 효과)
+			step := diff * 0.1
+
+			if math.Abs(diff) < 0.001 {
+				s.currentProgress = s.targetProgress
+				s.progressBar.SetValue(s.currentProgress)
+				s.progressBar.Refresh()
+				s.animating = false
+				return
+			}
+
+			s.currentProgress += step
+			s.progressBar.SetValue(s.currentProgress)
+			s.progressBar.Refresh()
+		}
+	}()
 }
