@@ -23,11 +23,18 @@ const (
 var (
 	fromVersion = flag.String("fromVersion", "", "현재 앱 버전")
 	serverName  = flag.String("server", "server1", "서버 프로필 이름")
+	testMode    = flag.Bool("test", false, "UI 테스트 모드")
 )
 
 func main() {
 	// 1. 커맨드라인 플래그 파싱
 	flag.Parse()
+
+	// 테스트 모드 체크
+	if *testMode {
+		runTestMode()
+		return
+	}
 
 	// 필수 인자 체크
 	if *fromVersion == "" {
@@ -122,4 +129,33 @@ func getCurrentDir() string {
 		os.Exit(1)
 	}
 	return filepath.Dir(dir)
+}
+
+// runTestMode는 UI 테스트를 위한 모드를 실행합니다
+func runTestMode() {
+	// 로거 초기화
+	logPath := getLogPath()
+	logger, err := logger.New(logger.Config{
+		LogPath:    logPath,
+		LogLevel:   logger.INFO,
+		MaxSize:    10 * 1024 * 1024,
+		MaxBackups: 5,
+	})
+	if err != nil {
+		fmt.Printf("Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Close()
+
+	// UI 매니저 초기화 (테스트용 버전 정보 사용)
+	uiManager := ui.New(ui.Config{
+		AppName:     AppName,
+		TotalSteps:  TotalSteps,
+		Logger:      logger,
+		FromVersion: "1.0.0", // 테스트용 버전
+		ToVersion:   "1.1.0", // 테스트용 버전
+	})
+
+	// UI 실행
+	uiManager.Run()
 }
