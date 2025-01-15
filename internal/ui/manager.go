@@ -20,16 +20,17 @@ type State struct {
 
 // Manager는 UI를 관리하는 구조체입니다
 type Manager struct {
-	app        fyne.App
-	mainWindow fyne.Window
-	logger     *logger.Logger
-	totalSteps int
+	app         fyne.App
+	mainWindow  fyne.Window
+	logger      *logger.Logger
+	totalSteps  int
+	currentStep int
 
-	// UI 컴포넌트들
-	statusCard *components.StatusCard // 상태 표시 컴포넌트
+	statusCard *components.StatusCard
+	onRestore  func()
 
-	// 복구 핸들러
-	onRestore func()
+	completionCallback func()
+	animationComplete  bool
 }
 
 // Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
@@ -44,15 +45,14 @@ type Config struct {
 // New는 새로운 Manager 인스턴스를 생성합니다
 func New(config Config) *Manager {
 	manager := &Manager{
-		app:        app.New(),
-		logger:     config.Logger,
-		totalSteps: config.TotalSteps,
+		app:               app.New(),
+		logger:            config.Logger,
+		totalSteps:        config.TotalSteps,
+		currentStep:       0,
+		animationComplete: false,
 	}
 
-	// 메인 윈도우 생성
 	manager.mainWindow = manager.app.NewWindow(fmt.Sprintf("%s Updater", config.AppName))
-
-	// UI 초기화
 	manager.initializeUI(config)
 
 	return manager
@@ -60,13 +60,19 @@ func New(config Config) *Manager {
 
 // initializeUI는 UI 컴포넌트들을 초기화하고 배치합니다
 func (m *Manager) initializeUI(config Config) {
-	// 상태 카드 생성
 	m.statusCard = components.NewStatusCard(config.FromVersion, config.ToVersion)
 
-	// 전체 레이아웃 구성 - 심플하게
-	content := container.NewPadded(m.statusCard)
+	// 이미 설정된 completion callback이 있다면 설정
+	if m.completionCallback != nil {
+		m.statusCard.SetCompletionCallback(func() {
+			if !m.animationComplete {
+				m.animationComplete = true
+				m.completionCallback()
+			}
+		})
+	}
 
-	// 메인 윈도우 설정
+	content := container.NewPadded(m.statusCard)
 	m.mainWindow.SetContent(content)
 	m.mainWindow.Resize(fyne.NewSize(400, 200))
 	m.mainWindow.CenterOnScreen()
@@ -98,6 +104,23 @@ func (m *Manager) SetCurrentStep(step int) {
 
 		m.logger.Info("업데이트 진행률: %.2f%%, 단계: %d/%d", progress*100, step, m.totalSteps-1)
 		m.statusCard.UpdateStatus(progress, msg)
+	}
+}
+
+// GetTotalSteps은 전체 단계 수를 반환합니다
+func (m *Manager) GetTotalSteps() int {
+	return m.totalSteps
+}
+
+func (m *Manager) SetCompletionCallback(callback func()) {
+	m.completionCallback = callback
+	if m.statusCard != nil {
+		m.statusCard.SetCompletionCallback(func() {
+			if m.completionCallback != nil && !m.animationComplete {
+				m.animationComplete = true
+				m.completionCallback()
+			}
+		})
 	}
 }
 
@@ -135,6 +158,16 @@ func (m *Manager) ShowRestoreComplete() {
 // SetRestoreHandler는 복구 핸들러를 설정합니다
 func (m *Manager) SetRestoreHandler(handler func()) {
 	m.onRestore = handler
+}
+
+// 상태 카드의 애니메이션 완료 콜백을 처리하는 메서드 추가
+func (m *Manager) onAnimationComplete() {
+	if !m.animationComplete && m.currentStep == m.totalSteps-1 {
+		m.animationComplete = true
+		if m.completionCallback != nil {
+			m.completionCallback()
+		}
+	}
 }
 
 // Run은 UI를 실행합니다

@@ -21,16 +21,20 @@ type StatusCard struct {
 	progressBar  *widget.ProgressBar
 	subtitleText *canvas.Text
 
-	// 애니메이션을 위한 필드 추가
 	targetProgress  float64
 	currentProgress float64
 	animating       bool
 	ticker          *time.Ticker
+	onComplete      func() // 추가
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
 func NewStatusCard(fromVersion, toVersion string) *StatusCard {
-	card := &StatusCard{}
+	card := &StatusCard{
+		targetProgress:  0,
+		currentProgress: 0,
+		animating:       false,
+	}
 	card.ExtendBaseWidget(card)
 	card.setupUI(fromVersion, toVersion)
 	return card
@@ -123,6 +127,11 @@ func (s *StatusCard) SetProgress(current, total int64) {
 	s.container.Refresh()
 }
 
+// SetCompletionCallback은 진행률 100% 도달 시 실행될 콜백을 설정합니다
+func (s *StatusCard) SetCompletionCallback(callback func()) {
+	s.onComplete = callback
+}
+
 // 부드러운 진행률 업데이트를 위한 메서드
 func (s *StatusCard) animateProgress() {
 	if s.ticker != nil {
@@ -141,7 +150,6 @@ func (s *StatusCard) animateProgress() {
 			}
 
 			diff := s.targetProgress - s.currentProgress
-			// 남은 거리의 10%씩 이동 (부드러운 효과)
 			step := diff * 0.1
 
 			if math.Abs(diff) < 0.001 {
@@ -149,6 +157,13 @@ func (s *StatusCard) animateProgress() {
 				s.progressBar.SetValue(s.currentProgress)
 				s.progressBar.Refresh()
 				s.animating = false
+
+				// 애니메이션이 100%에 도달했을 때 콜백 실행
+				if s.currentProgress >= 0.999 {
+					if s.onComplete != nil {
+						s.onComplete()
+					}
+				}
 				return
 			}
 

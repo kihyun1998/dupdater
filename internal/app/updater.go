@@ -235,25 +235,38 @@ func (u *Updater) verifyExtractedFiles() error {
 }
 
 func (u *Updater) restartApplication() error {
-	u.ui.UpdateDetail("애플리케이션 실행 준비중...")
+	// 마지막 단계 메시지 표시
+	u.ui.SetCurrentStep(u.ui.GetTotalSteps() - 1)
+	u.ui.UpdateDetail("업데이트가 완료되었습니다. 앱을 실행합니다...")
 
-	cmd := exec.Command(fmt.Sprintf("./%s", u.appName), "--patch", "--fromVersion", u.fromVersion)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: windows.CREATE_NEW_CONSOLE,
-	}
+	// 프로그레스바가 100%까지 도달할 때까지 대기하기 위한 채널
+	completionCh := make(chan struct{})
 
-	u.ui.UpdateDetail("애플리케이션을 실행합니다...")
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("애플리케이션 실행 실패: %v", err)
-	}
+	// UI에 완료 콜백 설정
+	u.ui.SetCompletionCallback(func() {
+		// 앱 실행 준비
+		cmd := exec.Command(fmt.Sprintf("./%s", u.appName), "--patch", "--fromVersion", u.fromVersion)
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			CreationFlags: windows.CREATE_NEW_CONSOLE,
+		}
 
-	// UI 종료 전 잠시 대기
-	time.Sleep(2 * time.Second)
+		// 앱 실행
+		if err := cmd.Start(); err != nil {
+			u.logger.Error("애플리케이션 실행 실패: %v", err)
+			return
+		}
+
+		// 2초 대기 후 UI 종료
+		time.Sleep(2 * time.Second)
+		close(completionCh)
+	})
+
+	// 완료 대기
+	<-completionCh
 	u.ui.Close()
 
 	return nil
 }
-
 func (u *Updater) restoreFiles() error {
 	u.ui.UpdateDetail("파일을 복원하고 있습니다...")
 	return u.fileManager.Restore()
@@ -313,4 +326,6 @@ type UIManager interface {
 	SetRestoreHandler(handler func())
 	ShowRestoring()
 	ShowRestoreComplete()
+	GetTotalSteps() int
+	SetCompletionCallback(func())
 }
