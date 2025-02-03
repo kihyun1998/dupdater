@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/ui/components"
+	"github.com/kihyun1998/dupdater/internal/ui/theme"
 )
 
 // State는 UI의 현재 상태를 나타내는 구조체입니다
@@ -20,14 +21,14 @@ type State struct {
 
 // Manager는 UI를 관리하는 구조체입니다
 type Manager struct {
-	app         fyne.App
-	mainWindow  fyne.Window
-	logger      *logger.Logger
-	totalSteps  int
-	currentStep int
-
-	statusCard *components.StatusCard
-	onRestore  func()
+	app          fyne.App
+	mainWindow   fyne.Window
+	logger       *logger.Logger
+	totalSteps   int
+	currentStep  int
+	currentTheme theme.Theme
+	statusCard   *components.StatusCard
+	onRestore    func()
 
 	completionCallback func()
 	animationComplete  bool
@@ -40,6 +41,7 @@ type Config struct {
 	FromVersion string
 	ToVersion   string
 	Logger      *logger.Logger
+	Theme       theme.Theme
 }
 
 // New는 새로운 Manager 인스턴스를 생성합니다
@@ -50,6 +52,7 @@ func New(config Config) *Manager {
 		totalSteps:        config.TotalSteps,
 		currentStep:       0,
 		animationComplete: false,
+		currentTheme:      config.Theme,
 	}
 
 	manager.mainWindow = manager.app.NewWindow(fmt.Sprintf("%s Updater", config.AppName))
@@ -60,7 +63,8 @@ func New(config Config) *Manager {
 
 // initializeUI는 UI 컴포넌트들을 초기화하고 배치합니다
 func (m *Manager) initializeUI(config Config) {
-	m.statusCard = components.NewStatusCard(config.FromVersion, config.ToVersion)
+	// StatusCard 생성 시 테마 전달
+	m.statusCard = components.NewStatusCard(config.FromVersion, config.ToVersion, m.currentTheme)
 
 	// 이미 설정된 completion callback이 있다면 설정
 	if m.completionCallback != nil {
@@ -72,7 +76,11 @@ func (m *Manager) initializeUI(config Config) {
 		})
 	}
 
+	// 배경색 설정
 	content := container.NewPadded(m.statusCard)
+	content.Resize(fyne.NewSize(400, 200))
+
+	// 테마에 따른 배경색 설정
 	m.mainWindow.SetContent(content)
 	m.mainWindow.Resize(fyne.NewSize(400, 200))
 	m.mainWindow.CenterOnScreen()

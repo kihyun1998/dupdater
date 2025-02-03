@@ -12,6 +12,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/internal/ui"
+	"github.com/kihyun1998/dupdater/internal/ui/theme"
 	"github.com/kihyun1998/dupdater/internal/version"
 )
 
@@ -26,12 +27,18 @@ var (
 	toVersion   = flag.String("toVersion", "", "업데이트할 버전")
 	serverName  = flag.String("server", "server1", "서버 프로필 이름")
 	testMode    = flag.Bool("test", false, "UI 테스트 모드")
+	themeMode   = flag.String("theme", "light", "테마 모드 (light/dark)")
 )
 
 func main() {
-	fmt.Println("시작")
 	// 1. 커맨드라인 플래그 파싱
 	flag.Parse()
+
+	// 2. 테마 초기화
+	if err := theme.InitTheme(*themeMode); err != nil {
+		fmt.Printf("테마 초기화 실패: %v\n", err)
+		os.Exit(1)
+	}
 
 	// 테스트 모드 체크
 	if *testMode {
@@ -46,7 +53,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 2. 로거 초기화
+	// 3. 로거 초기화
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
 		LogPath:    logPath,
@@ -62,7 +69,7 @@ func main() {
 
 	logger.Info("Starting updater - version: %s, server: %s", *fromVersion, *serverName)
 
-	// 버전 매니저 초기화
+	// 4. 버전 매니저 초기화
 	versionManager, err := version.New(version.Config{
 		Logger:      logger,
 		FromVersion: *fromVersion,
@@ -76,21 +83,22 @@ func main() {
 	// 버전 매니저 초기화 후 로깅
 	logger.Info("업데이트 진행: %s -> %s", versionManager.GetFromVersion(), versionManager.GetToVersion())
 
-	// 3. UI 매니저 초기화
+	// 5. UI 매니저 초기화
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
 		Logger:      logger,
 		FromVersion: versionManager.GetFromVersion(),
 		ToVersion:   versionManager.GetToVersion(),
+		Theme:       theme.GetCurrentTheme(),
 	})
 
-	// 4. 네트워크 매니저 초기화
+	// 6. 네트워크 매니저 초기화
 	networkManager := network.New(network.Config{
 		Logger: logger,
 	})
 
-	// 5. 파일 매니저 초기화
+	// 7. 파일 매니저 초기화
 	fileManager, err := file.New(file.Config{
 		Logger:     logger,
 		BackupDir:  filepath.Join(os.TempDir(), "ACRABACK"),
@@ -102,7 +110,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 6. 해시 매니저 초기화
+	// 8. 해시 매니저 초기화
 	hashManager, err := hash.New(hash.Config{
 		Logger:     logger,
 		CurrentDir: getCurrentDir(),
@@ -113,7 +121,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 7. Updater 생성 및 시작
+	// 9. Updater 생성 및 시작
 	updater := app.New(app.Config{
 		AppName:         TargetAppName,
 		FromVersion:     *fromVersion,
@@ -126,7 +134,7 @@ func main() {
 		HashManager:     hashManager,
 	})
 
-	// 8. 업데이트 프로세스 시작
+	// 10. 업데이트 프로세스 시작
 	updater.Start()
 }
 
@@ -185,6 +193,7 @@ func runTestMode() {
 		Logger:      logger,
 		FromVersion: testVersionManager.GetFromVersion(),
 		ToVersion:   testVersionManager.GetToVersion(),
+		Theme:       theme.GetCurrentTheme(),
 	})
 
 	// UI 실행

@@ -17,16 +17,19 @@ dupdater/
     │   └── logger.go
     ├── network/
     │   └── manager.go
-    └── ui/
+    ├── ui/
     │   ├── components/
-    │       ├── header_card.go
-    │       ├── resources.go
-    │       ├── status_card.go
-    │       └── step_indicator.go
+    │   │   ├── header_card.go
+    │   │   ├── resources.go
+    │   │   ├── status_card.go
+    │   │   └── step_indicator.go
     │   ├── theme/
-    │       └── theme.go
+    │   │   └── theme.go
     │   ├── manager.go
     │   └── resources.go
+    └── version/
+    │   ├── manger.go
+    │   └── types.go
 ├── pkg/
     └── utils/
     │   ├── count.go
@@ -128,6 +131,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/internal/ui"
+	"github.com/kihyun1998/dupdater/internal/version"
 )
 
 const (
@@ -138,11 +142,13 @@ const (
 
 var (
 	fromVersion = flag.String("fromVersion", "", "현재 앱 버전")
+	toVersion   = flag.String("toVersion", "", "업데이트할 버전")
 	serverName  = flag.String("server", "server1", "서버 프로필 이름")
 	testMode    = flag.Bool("test", false, "UI 테스트 모드")
 )
 
 func main() {
+	fmt.Println("시작")
 	// 1. 커맨드라인 플래그 파싱
 	flag.Parse()
 
@@ -153,8 +159,8 @@ func main() {
 	}
 
 	// 필수 인자 체크
-	if *fromVersion == "" {
-		fmt.Println("Error: fromVersion is required")
+	if *fromVersion == "" || *toVersion == "" {
+		fmt.Println("Error: fromVersion and toVersion are required")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -175,13 +181,27 @@ func main() {
 
 	logger.Info("Starting updater - version: %s, server: %s", *fromVersion, *serverName)
 
+	// 버전 매니저 초기화
+	versionManager, err := version.New(version.Config{
+		Logger:      logger,
+		FromVersion: *fromVersion,
+		ToVersion:   *toVersion,
+	})
+	if err != nil {
+		logger.Error("버전 관리자 초기화 실패: %v", err)
+		os.Exit(1)
+	}
+
+	// 버전 매니저 초기화 후 로깅
+	logger.Info("업데이트 진행: %s -> %s", versionManager.GetFromVersion(), versionManager.GetToVersion())
+
 	// 3. UI 매니저 초기화
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
 		Logger:      logger,
-		FromVersion: *fromVersion,
-		ToVersion:   "1.1.0", // 테스트용 버전
+		FromVersion: versionManager.GetFromVersion(),
+		ToVersion:   versionManager.GetToVersion(),
 	})
 
 	// 4. 네트워크 매니저 초기화
@@ -251,6 +271,7 @@ func getCurrentDir() string {
 
 // runTestMode는 UI 테스트를 위한 모드를 실행합니다
 func runTestMode() {
+
 	// 로거 초기화
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
@@ -265,13 +286,24 @@ func runTestMode() {
 	}
 	defer logger.Close()
 
+	// 테스트 모드용 버전 매니저 초기화
+	testVersionManager, err := version.New(version.Config{
+		Logger:      logger,
+		FromVersion: "V3.0.0(2024-01-01)",
+		ToVersion:   "V3.0.1(2024-02-01)",
+	})
+	if err != nil {
+		logger.Error("버전 관리자 초기화 실패: %v", err)
+		os.Exit(1)
+	}
+
 	// UI 매니저 초기화 (테스트용 버전 정보 사용)
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
 		Logger:      logger,
-		FromVersion: "1.0.0", // 테스트용 버전
-		ToVersion:   "1.1.0", // 테스트용 버전
+		FromVersion: testVersionManager.GetFromVersion(),
+		ToVersion:   testVersionManager.GetToVersion(),
 	})
 
 	// UI 실행
@@ -2274,6 +2306,119 @@ const (
 	FontSizeMedium = 16 // 일반 텍스트용
 	FontSizeLarge  = 20 // 제목용
 )
+
+```
+## internal/version/manger.go
+```go
+package version
+
+import "fmt"
+
+// Manager는 버전 관리를 담당하는 구조체입니다
+type Manager struct {
+	logger      Logger
+	fromVersion *Version
+	toVersion   *Version
+}
+
+// Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
+type Config struct {
+	Logger      Logger
+	FromVersion string
+	ToVersion   string
+}
+
+// New는 새로운 Manager 인스턴스를 생성합니다
+func New(config Config) (*Manager, error) {
+	fromVersion, err := ParseVersion(config.FromVersion)
+	if err != nil {
+		return nil, fmt.Errorf("현재 버전 파싱 실패: %w", err)
+	}
+
+	toVersion, err := ParseVersion(config.ToVersion)
+	if err != nil {
+		return nil, fmt.Errorf("대상 버전 파싱 실패: %w", err)
+	}
+
+	return &Manager{
+		logger:      config.Logger,
+		fromVersion: fromVersion,
+		toVersion:   toVersion,
+	}, nil
+}
+
+// GetFromVersion은 현재 버전을 반환합니다
+func (m *Manager) GetFromVersion() string {
+	return m.fromVersion.String()
+}
+
+// GetToVersion은 대상 버전을 반환합니다
+func (m *Manager) GetToVersion() string {
+	return m.toVersion.String()
+}
+
+// Logger는 로깅을 위한 인터페이스입니다
+type Logger interface {
+	Info(format string, v ...interface{})
+	Error(format string, v ...interface{})
+}
+
+```
+## internal/version/types.go
+```go
+package version
+
+import (
+	"fmt"
+	"regexp"
+	"time"
+)
+
+// Version은 버전 정보를 나타내는 구조체입니다
+type Version struct {
+	Major       int
+	Minor       int
+	Patch       int
+	Date        time.Time
+	FullVersion string // 원본 버전 문자열 저장
+}
+
+// ParseVersion은 문자열을 Version 구조체로 파싱합니다
+// 예: V3.0.0(2024-01-01)
+func ParseVersion(version string) (*Version, error) {
+	pattern := `^V(\d+)\.(\d+)\.(\d+)\((\d{4}-\d{2}-\d{2})\)$`
+	re := regexp.MustCompile(pattern)
+	matches := re.FindStringSubmatch(version)
+
+	if matches == nil {
+		return nil, fmt.Errorf("잘못된 버전 형식: %s (예: V3.0.0(2024-01-01))", version)
+	}
+
+	// Parse version numbers
+	var major, minor, patch int
+	fmt.Sscanf(matches[1], "%d", &major)
+	fmt.Sscanf(matches[2], "%d", &minor)
+	fmt.Sscanf(matches[3], "%d", &patch)
+
+	// Parse date
+	date, err := time.Parse("2006-01-02", matches[4])
+	if err != nil {
+		return nil, fmt.Errorf("날짜 파싱 실패: %s", matches[4])
+	}
+
+	return &Version{
+		Major:       major,
+		Minor:       minor,
+		Patch:       patch,
+		Date:        date,
+		FullVersion: version,
+	}, nil
+}
+
+// String은 Version을 문자열로 변환합니다
+func (v *Version) String() string {
+	return v.FullVersion
+}
 
 ```
 ## pkg/utils/count.go

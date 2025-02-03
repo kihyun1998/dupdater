@@ -73,3 +73,9 @@ flowchart TB
     style HashManager fill:#f3e5f5,stroke:#ab47bc
     style NetworkManager fill:#fce4ec,stroke:#ec407a
 ```
+
+## 빌드 방법
+
+```bash
+cd $(DUPDATER_PATH)/cmd/dupdater && go build -o ../../dupdater.exe
+```

@@ -1,24 +1,110 @@
+// internal/ui/theme/theme.go
+
 package theme
 
-import "image/color"
+import (
+	"fmt"
+	"image/color"
+	"sync"
+)
 
-// Colors는 앱에서 사용하는 색상 테마를 정의합니다
 var (
-	// 기본 색상
-	BackgroundColor = color.NRGBA{R: 255, G: 255, B: 255, A: 255} // 흰색
-	TextColor       = color.NRGBA{R: 17, G: 24, B: 39, A: 255}    // 진한 회색
-	SubTextColor    = color.NRGBA{R: 107, G: 114, B: 128, A: 255} // 중간 회색
+	// currentTheme은 현재 사용 중인 테마입니다
+	currentTheme Theme
 
-	// 상태 표시 색상
-	ProgressColor = color.NRGBA{R: 59, G: 130, B: 246, A: 255}  // 파란색
-	SuccessColor  = color.NRGBA{R: 74, G: 222, B: 128, A: 255}  // 초록색
-	WarningColor  = color.NRGBA{R: 251, G: 191, B: 36, A: 255}  // 노란색
-	ErrorColor    = color.NRGBA{R: 248, G: 113, B: 113, A: 255} // 빨간색
+	// themeMutex는 테마 변경 시 동시성을 제어합니다
+	themeMutex sync.RWMutex
 )
 
-// FontSize는 텍스트 크기를 정의합니다
-const (
-	FontSizeSmall  = 14 // 부가 설명용
-	FontSizeMedium = 16 // 일반 텍스트용
-	FontSizeLarge  = 20 // 제목용
-)
+// InitTheme은 앱의 테마를 초기화합니다
+func InitTheme(mode string) error {
+	themeMutex.Lock()
+	defer themeMutex.Unlock()
+
+	switch mode {
+	case "light":
+		currentTheme = NewLightTheme()
+	case "dark":
+		currentTheme = NewDarkTheme()
+	default:
+		return fmt.Errorf("지원하지 않는 테마 모드: %s", mode)
+	}
+
+	return nil
+}
+
+// GetCurrentTheme은 현재 테마를 반환합니다
+func GetCurrentTheme() Theme {
+	themeMutex.RLock()
+	defer themeMutex.RUnlock()
+
+	if currentTheme == nil {
+		// 기본값으로 라이트 테마 사용
+		currentTheme = NewLightTheme()
+	}
+
+	return currentTheme
+}
+
+// SetTheme은 새로운 테마를 설정합니다
+func SetTheme(theme Theme) {
+	themeMutex.Lock()
+	defer themeMutex.Unlock()
+
+	currentTheme = theme
+}
+
+// 테마 모드 변경을 위한 헬퍼 함수들
+func ToggleTheme() {
+	themeMutex.Lock()
+	defer themeMutex.Unlock()
+
+	if currentTheme.IsLight() {
+		currentTheme = NewDarkTheme()
+	} else {
+		currentTheme = NewLightTheme()
+	}
+}
+
+// IsLightMode는 현재 라이트 모드인지 확인합니다
+func IsLightMode() bool {
+	return GetCurrentTheme().IsLight()
+}
+
+// IsDarkMode는 현재 다크 모드인지 확인합니다
+func IsDarkMode() bool {
+	return !GetCurrentTheme().IsLight()
+}
+
+// 테마 색상을 직접 가져오는 유틸리티 함수들
+func GetBackgroundColor() color.Color {
+	return GetCurrentTheme().BackgroundColor()
+}
+
+func GetTextColor() color.Color {
+	return GetCurrentTheme().TextColor()
+}
+
+func GetPrimaryColor() color.Color {
+	return GetCurrentTheme().PrimaryColor()
+}
+
+func GetSubTextColor() color.Color {
+	return GetCurrentTheme().SubTextColor()
+}
+
+func GetSuccessColor() color.Color {
+	return GetCurrentTheme().SuccessColor()
+}
+
+func GetWarningColor() color.Color {
+	return GetCurrentTheme().WarningColor()
+}
+
+func GetErrorColor() color.Color {
+	return GetCurrentTheme().ErrorColor()
+}
+
+func GetDividerColor() color.Color {
+	return GetCurrentTheme().DividerColor()
+}
