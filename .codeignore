@@ -1,0 +1,9 @@
+.gitattributes
+admin.manifest
+codemd-windows-amd64.exe
+dupdater.exe
+go.mod
+go.sum
+icon.png
+rsrc.syso
+updater.syso

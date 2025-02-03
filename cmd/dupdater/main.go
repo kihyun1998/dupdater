@@ -12,6 +12,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/internal/ui"
+	"github.com/kihyun1998/dupdater/internal/version"
 )
 
 const (
@@ -22,6 +23,7 @@ const (
 
 var (
 	fromVersion = flag.String("fromVersion", "", "현재 앱 버전")
+	toVersion   = flag.String("toVersion", "", "업데이트할 버전")
 	serverName  = flag.String("server", "server1", "서버 프로필 이름")
 	testMode    = flag.Bool("test", false, "UI 테스트 모드")
 )
@@ -37,8 +39,8 @@ func main() {
 	}
 
 	// 필수 인자 체크
-	if *fromVersion == "" {
-		fmt.Println("Error: fromVersion is required")
+	if *fromVersion == "" || *toVersion == "" {
+		fmt.Println("Error: fromVersion and toVersion are required")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -59,13 +61,27 @@ func main() {
 
 	logger.Info("Starting updater - version: %s, server: %s", *fromVersion, *serverName)
 
+	// 버전 매니저 초기화
+	versionManager, err := version.New(version.Config{
+		Logger:      logger,
+		FromVersion: *fromVersion,
+		ToVersion:   *toVersion,
+	})
+	if err != nil {
+		logger.Error("버전 관리자 초기화 실패: %v", err)
+		os.Exit(1)
+	}
+
+	// 버전 매니저 초기화 후 로깅
+	logger.Info("업데이트 진행: %s -> %s", versionManager.GetFromVersion(), versionManager.GetToVersion())
+
 	// 3. UI 매니저 초기화
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
 		Logger:      logger,
-		FromVersion: *fromVersion,
-		ToVersion:   "1.1.0", // 테스트용 버전
+		FromVersion: versionManager.GetFromVersion(),
+		ToVersion:   versionManager.GetToVersion(),
 	})
 
 	// 4. 네트워크 매니저 초기화
@@ -135,6 +151,7 @@ func getCurrentDir() string {
 
 // runTestMode는 UI 테스트를 위한 모드를 실행합니다
 func runTestMode() {
+
 	// 로거 초기화
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
@@ -149,13 +166,24 @@ func runTestMode() {
 	}
 	defer logger.Close()
 
+	// 테스트 모드용 버전 매니저 초기화
+	testVersionManager, err := version.New(version.Config{
+		Logger:      logger,
+		FromVersion: "1.0.0",
+		ToVersion:   "1.1.0",
+	})
+	if err != nil {
+		logger.Error("버전 관리자 초기화 실패: %v", err)
+		os.Exit(1)
+	}
+
 	// UI 매니저 초기화 (테스트용 버전 정보 사용)
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
 		Logger:      logger,
-		FromVersion: "1.0.0", // 테스트용 버전
-		ToVersion:   "1.1.0", // 테스트용 버전
+		FromVersion: testVersionManager.GetFromVersion(),
+		ToVersion:   testVersionManager.GetToVersion(),
 	})
 
 	// UI 실행
