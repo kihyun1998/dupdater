@@ -29,6 +29,7 @@ var (
 )
 
 func main() {
+	fmt.Println("시작")
 	// 1. 커맨드라인 플래그 파싱
 	flag.Parse()
 
@@ -169,8 +170,8 @@ func runTestMode() {
 	// 테스트 모드용 버전 매니저 초기화
 	testVersionManager, err := version.New(version.Config{
 		Logger:      logger,
-		FromVersion: "1.0.0",
-		ToVersion:   "1.1.0",
+		FromVersion: "V3.0.0(2024-01-01)",
+		ToVersion:   "V3.0.1(2024-02-01)",
 	})
 	if err != nil {
 		logger.Error("버전 관리자 초기화 실패: %v", err)
