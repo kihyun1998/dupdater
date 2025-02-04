@@ -19,12 +19,13 @@ dupdater/
     │   └── manager.go
     ├── ui/
     │   ├── components/
-    │   │   ├── header_card.go
     │   │   ├── resources.go
-    │   │   ├── status_card.go
-    │   │   └── step_indicator.go
+    │   │   └── status_card.go
     │   ├── theme/
-    │   │   └── theme.go
+    │   │   ├── dark_theme.go
+    │   │   ├── light_theme.go
+    │   │   ├── theme.go
+    │   │   └── types.go
     │   ├── manager.go
     │   └── resources.go
     └── version/
@@ -114,6 +115,12 @@ flowchart TB
     style HashManager fill:#f3e5f5,stroke:#ab47bc
     style NetworkManager fill:#fce4ec,stroke:#ec407a
 ```
+
+## 빌드 방법
+
+```bash
+cd $(DUPDATER_PATH)/cmd/dupdater && go build -o ../../dupdater.exe
+```
 ```
 ## cmd/dupdater/main.go
 ```go
@@ -131,6 +138,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/internal/ui"
+	"github.com/kihyun1998/dupdater/internal/ui/theme"
 	"github.com/kihyun1998/dupdater/internal/version"
 )
 
@@ -145,12 +153,18 @@ var (
 	toVersion   = flag.String("toVersion", "", "업데이트할 버전")
 	serverName  = flag.String("server", "server1", "서버 프로필 이름")
 	testMode    = flag.Bool("test", false, "UI 테스트 모드")
+	themeMode   = flag.String("theme", "light", "테마 모드 (light/dark)")
 )
 
 func main() {
-	fmt.Println("시작")
 	// 1. 커맨드라인 플래그 파싱
 	flag.Parse()
+
+	// 2. 테마 초기화
+	if err := theme.InitTheme(*themeMode); err != nil {
+		fmt.Printf("테마 초기화 실패: %v\n", err)
+		os.Exit(1)
+	}
 
 	// 테스트 모드 체크
 	if *testMode {
@@ -165,7 +179,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 2. 로거 초기화
+	// 3. 로거 초기화
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
 		LogPath:    logPath,
@@ -181,7 +195,7 @@ func main() {
 
 	logger.Info("Starting updater - version: %s, server: %s", *fromVersion, *serverName)
 
-	// 버전 매니저 초기화
+	// 4. 버전 매니저 초기화
 	versionManager, err := version.New(version.Config{
 		Logger:      logger,
 		FromVersion: *fromVersion,
@@ -195,21 +209,22 @@ func main() {
 	// 버전 매니저 초기화 후 로깅
 	logger.Info("업데이트 진행: %s -> %s", versionManager.GetFromVersion(), versionManager.GetToVersion())
 
-	// 3. UI 매니저 초기화
+	// 5. UI 매니저 초기화
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
 		Logger:      logger,
 		FromVersion: versionManager.GetFromVersion(),
 		ToVersion:   versionManager.GetToVersion(),
+		Theme:       theme.GetCurrentTheme(),
 	})
 
-	// 4. 네트워크 매니저 초기화
+	// 6. 네트워크 매니저 초기화
 	networkManager := network.New(network.Config{
 		Logger: logger,
 	})
 
-	// 5. 파일 매니저 초기화
+	// 7. 파일 매니저 초기화
 	fileManager, err := file.New(file.Config{
 		Logger:     logger,
 		BackupDir:  filepath.Join(os.TempDir(), "ACRABACK"),
@@ -221,7 +236,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 6. 해시 매니저 초기화
+	// 8. 해시 매니저 초기화
 	hashManager, err := hash.New(hash.Config{
 		Logger:     logger,
 		CurrentDir: getCurrentDir(),
@@ -232,7 +247,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 7. Updater 생성 및 시작
+	// 9. Updater 생성 및 시작
 	updater := app.New(app.Config{
 		AppName:         TargetAppName,
 		FromVersion:     *fromVersion,
@@ -245,7 +260,7 @@ func main() {
 		HashManager:     hashManager,
 	})
 
-	// 8. 업데이트 프로세스 시작
+	// 10. 업데이트 프로세스 시작
 	updater.Start()
 }
 
@@ -304,6 +319,7 @@ func runTestMode() {
 		Logger:      logger,
 		FromVersion: testVersionManager.GetFromVersion(),
 		ToVersion:   testVersionManager.GetToVersion(),
+		Theme:       theme.GetCurrentTheme(),
 	})
 
 	// UI 실행
@@ -1624,101 +1640,6 @@ type Logger interface {
 }
 
 ```
-## internal/ui/components/header_card.go
-```go
-package components
-
-import (
-	"fmt"
-
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/widget"
-	"github.com/kihyun1998/dupdater/internal/ui/theme"
-)
-
-// HeaderCard는 업데이트 헤더를 표시하는 컴포넌트입니다
-type HeaderCard struct {
-	widget.BaseWidget
-	title       string
-	fromVersion string
-	toVersion   string
-	container   *fyne.Container
-	titleText   *canvas.Text
-	versionText *canvas.Text
-}
-
-// NewHeaderCard는 새로운 HeaderCard를 생성합니다
-func NewHeaderCard(title, fromVersion, toVersion string) *HeaderCard {
-	card := &HeaderCard{
-		title:       title,
-		fromVersion: fromVersion,
-		toVersion:   toVersion,
-	}
-	card.ExtendBaseWidget(card)
-	card.setupUI()
-	return card
-}
-
-// CreateRenderer는 Fyne 위젯 인터페이스를 구현합니다
-func (h *HeaderCard) CreateRenderer() fyne.WidgetRenderer {
-	return widget.NewSimpleRenderer(h.container)
-}
-
-// setupUI는 UI 컴포넌트를 초기화합니다
-func (h *HeaderCard) setupUI() {
-	// 타이틀 텍스트
-	h.titleText = canvas.NewText(h.title, theme.TextColor)
-	h.titleText.TextStyle = fyne.TextStyle{Bold: true}
-	h.titleText.TextSize = theme.FontSizeLarge
-
-	// 버전 텍스트
-	versionStr := fmt.Sprintf("%s → %s", h.fromVersion, h.toVersion)
-	h.versionText = canvas.NewText(versionStr, theme.SubTextColor)
-	h.versionText.TextSize = theme.FontSizeSmall
-	h.versionText.Alignment = fyne.TextAlignTrailing
-
-	// 구분선
-	// divider := canvas.NewLine(theme.DividerColor)
-	// divider.StrokeWidth = 1
-
-	// 헤더 컨테이너 (타이틀과 버전 정보)
-	headerContainer := container.NewHBox(
-		h.titleText,
-		layout.NewSpacer(),
-		h.versionText,
-	)
-
-	// 메인 컨테이너
-	h.container = container.NewVBox(
-		headerContainer,
-		// divider,
-	)
-
-	// 패딩 추가
-	h.container = container.NewPadded(h.container)
-	h.container.Resize(fyne.NewSize(400, 60))
-}
-
-// UpdateVersions는 버전 정보를 업데이트합니다
-func (h *HeaderCard) UpdateVersions(fromVersion, toVersion string) {
-	h.fromVersion = fromVersion
-	h.toVersion = toVersion
-	if h.versionText != nil {
-		h.versionText.Text = fmt.Sprintf("%s → %s", fromVersion, toVersion)
-		h.versionText.Refresh()
-		h.container.Refresh()
-	}
-}
-
-// MinSize는 최소 크기를 반환합니다
-func (h *HeaderCard) MinSize() fyne.Size {
-	return fyne.NewSize(400, 60)
-}
-
-```
 ## internal/ui/components/resources.go
 ```go
 package components
@@ -1807,20 +1728,22 @@ type StatusCard struct {
 	versionText  *canvas.Text
 	progressBar  *widget.ProgressBar
 	subtitleText *canvas.Text
+	currentTheme theme.Theme
 
 	targetProgress  float64
 	currentProgress float64
 	animating       bool
 	ticker          *time.Ticker
-	onComplete      func() // 추가
+	onComplete      func()
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
-func NewStatusCard(fromVersion, toVersion string) *StatusCard {
+func NewStatusCard(fromVersion, toVersion string, theme theme.Theme) *StatusCard {
 	card := &StatusCard{
 		targetProgress:  0,
 		currentProgress: 0,
 		animating:       false,
+		currentTheme:    theme,
 	}
 	card.ExtendBaseWidget(card)
 	card.setupUI(fromVersion, toVersion)
@@ -1834,21 +1757,21 @@ func (s *StatusCard) CreateRenderer() fyne.WidgetRenderer {
 
 // setupUI는 UI 컴포넌트를 초기화합니다
 func (s *StatusCard) setupUI(fromVersion, toVersion string) {
-	// 타이틀
-	s.titleText = canvas.NewText("새로운 업데이트가 있습니다", theme.TextColor)
-	s.titleText.TextSize = 16
+	// 타이틀 (현재 테마의 색상 사용)
+	s.titleText = canvas.NewText("새로운 업데이트가 있습니다", s.currentTheme.TextColor())
+	s.titleText.TextSize = s.currentTheme.FontSizeLarge()
 	s.titleText.TextStyle = fyne.TextStyle{Bold: true}
 
 	// 버전 정보
-	s.versionText = canvas.NewText(fmt.Sprintf("%s → %s", fromVersion, toVersion), theme.SubTextColor)
-	s.versionText.TextSize = 14
+	s.versionText = canvas.NewText(fmt.Sprintf("%s → %s", fromVersion, toVersion), s.currentTheme.SubTextColor())
+	s.versionText.TextSize = s.currentTheme.FontSizeMedium()
 
 	// 진행 바
 	s.progressBar = widget.NewProgressBar()
 
 	// 상태 메시지
-	s.subtitleText = canvas.NewText("업데이트가 완료되면 자동으로 앱이 다시 시작됩니다.", theme.SubTextColor)
-	s.subtitleText.TextSize = 12
+	s.subtitleText = canvas.NewText("업데이트가 완료되면 자동으로 앱이 다시 시작됩니다.", s.currentTheme.SubTextColor())
+	s.subtitleText.TextSize = s.currentTheme.FontSizeSmall()
 
 	// 레이아웃 구성
 	s.container = container.NewVBox(
@@ -1864,9 +1787,9 @@ func (s *StatusCard) setupUI(fromVersion, toVersion string) {
 // SetError는 에러 상태를 표시합니다
 func (s *StatusCard) SetError(errMsg string) {
 	s.titleText.Text = "업데이트 중 오류가 발생했습니다"
-	s.titleText.Color = theme.ErrorColor
+	s.titleText.Color = s.currentTheme.ErrorColor()
 	s.subtitleText.Text = errMsg
-	s.subtitleText.Color = theme.ErrorColor
+	s.subtitleText.Color = s.currentTheme.ErrorColor()
 	s.progressBar.Hide()
 	s.container.Refresh()
 }
@@ -1874,9 +1797,9 @@ func (s *StatusCard) SetError(errMsg string) {
 // SetRestoring는 복원 진행 상태를 표시합니다
 func (s *StatusCard) SetRestoring(msg string) {
 	s.titleText.Text = "이전 버전으로 복원 중"
-	s.titleText.Color = theme.WarningColor
+	s.titleText.Color = s.currentTheme.WarningColor()
 	s.subtitleText.Text = msg
-	s.subtitleText.Color = theme.WarningColor
+	s.subtitleText.Color = s.currentTheme.WarningColor()
 	s.progressBar.Show()
 	s.container.Refresh()
 }
@@ -1884,9 +1807,9 @@ func (s *StatusCard) SetRestoring(msg string) {
 // SetRestoreComplete는 복원 완료 상태를 표시합니다
 func (s *StatusCard) SetRestoreComplete() {
 	s.titleText.Text = "복원이 완료되었습니다"
-	s.titleText.Color = theme.SuccessColor
+	s.titleText.Color = s.currentTheme.SuccessColor()
 	s.subtitleText.Text = "앱이 곧 다시 시작됩니다"
-	s.subtitleText.Color = theme.SuccessColor
+	s.subtitleText.Color = s.currentTheme.SuccessColor()
 	s.progressBar.Hide()
 	s.container.Refresh()
 }
@@ -1894,9 +1817,9 @@ func (s *StatusCard) SetRestoreComplete() {
 // UpdateStatus는 상태와 진행률을 업데이트합니다
 func (s *StatusCard) UpdateStatus(progress float64, message string) {
 	s.titleText.Text = "업데이트 진행 중"
-	s.titleText.Color = theme.TextColor
+	s.titleText.Color = s.currentTheme.TextColor()
 	s.subtitleText.Text = message
-	s.subtitleText.Color = theme.SubTextColor
+	s.subtitleText.Color = s.currentTheme.SubTextColor()
 
 	if progress >= 0 {
 		s.targetProgress = progress
@@ -1962,126 +1885,6 @@ func (s *StatusCard) animateProgress() {
 }
 
 ```
-## internal/ui/components/step_indicator.go
-```go
-package components
-
-import (
-	"image/color"
-
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/widget"
-	"github.com/kihyun1998/dupdater/internal/ui/theme"
-)
-
-// StepStatus는 단계의 상태를 정의합니다
-type StepStatus int
-
-const (
-	StepPending StepStatus = iota
-	StepInProgress
-	StepCompleted
-	StepFailed
-)
-
-// StepIndicator는 업데이트 과정의 각 단계를 표시하는 컴포넌트입니다
-type StepIndicator struct {
-	widget.BaseWidget
-	title  string     // 단계 제목
-	detail string     // 상세 설명
-	status StepStatus // 현재 상태
-
-	container  *fyne.Container
-	icon       *canvas.Image // 상태 아이콘
-	titleText  *canvas.Text  // 제목 텍스트
-	detailText *canvas.Text  // 상세 설명 텍스트
-}
-
-// NewStepIndicator는 새로운 StepIndicator를 생성합니다
-func NewStepIndicator(title, detail string) *StepIndicator {
-	step := &StepIndicator{
-		title:  title,
-		detail: detail,
-		status: StepPending,
-	}
-	step.ExtendBaseWidget(step)
-	step.setupUI()
-	return step
-}
-
-// CreateRenderer는 Fyne 위젯 인터페이스를 구현합니다
-func (s *StepIndicator) CreateRenderer() fyne.WidgetRenderer {
-	return widget.NewSimpleRenderer(s.container)
-}
-
-// setupUI는 UI 컴포넌트를 초기화합니다
-func (s *StepIndicator) setupUI() {
-	// 아이콘 설정 (기본값은 대기 상태)
-	s.icon = canvas.NewImageFromResource(resourceProgressIconSvg)
-	s.icon.Resize(fyne.NewSize(20, 20))
-	s.icon.FillMode = canvas.ImageFillOriginal
-
-	// 제목 텍스트
-	s.titleText = canvas.NewText(s.title, theme.TextColor)
-	s.titleText.TextSize = theme.FontSizeMedium
-
-	// 상세 설명 텍스트
-	s.detailText = canvas.NewText(s.detail, theme.SubTextColor)
-	s.detailText.TextSize = theme.FontSizeSmall
-
-	// 텍스트 컨테이너
-	textContainer := container.NewVBox(
-		s.titleText,
-		s.detailText,
-	)
-
-	// 메인 컨테이너 (아이콘 + 텍스트)
-	s.container = container.NewHBox(
-		container.NewPadded(s.icon),
-		textContainer,
-	)
-}
-
-// UpdateStatus는 단계의 상태를 업데이트합니다
-func (s *StepIndicator) UpdateStatus(status StepStatus) {
-	s.status = status
-
-	// 상태에 따른 아이콘과 색상 업데이트
-	var iconResource fyne.Resource
-	var titleColor color.Color
-
-	switch s.status {
-	case StepCompleted:
-		iconResource = resourceCompletedIconSvg
-		titleColor = theme.SuccessColor
-	case StepInProgress:
-		iconResource = resourceProgressIconSvg
-		// titleColor = theme.InfoColor
-	case StepFailed:
-		iconResource = resourceFailedIconSvg
-		titleColor = theme.ErrorColor
-	default:
-		iconResource = resourceProgressIconSvg
-		titleColor = theme.SubTextColor
-	}
-
-	s.icon.Resource = iconResource
-	s.titleText.Color = titleColor
-	s.icon.Refresh()
-	s.titleText.Refresh()
-	s.container.Refresh()
-}
-
-// UpdateDetail은 상세 설명을 업데이트합니다
-func (s *StepIndicator) UpdateDetail(detail string) {
-	s.detail = detail
-	s.detailText.Text = detail
-	s.detailText.Refresh()
-}
-
-```
 ## internal/ui/manager.go
 ```go
 package ui
@@ -2094,6 +1897,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/ui/components"
+	"github.com/kihyun1998/dupdater/internal/ui/theme"
 )
 
 // State는 UI의 현재 상태를 나타내는 구조체입니다
@@ -2106,14 +1910,14 @@ type State struct {
 
 // Manager는 UI를 관리하는 구조체입니다
 type Manager struct {
-	app         fyne.App
-	mainWindow  fyne.Window
-	logger      *logger.Logger
-	totalSteps  int
-	currentStep int
-
-	statusCard *components.StatusCard
-	onRestore  func()
+	app          fyne.App
+	mainWindow   fyne.Window
+	logger       *logger.Logger
+	totalSteps   int
+	currentStep  int
+	currentTheme theme.Theme
+	statusCard   *components.StatusCard
+	onRestore    func()
 
 	completionCallback func()
 	animationComplete  bool
@@ -2126,6 +1930,7 @@ type Config struct {
 	FromVersion string
 	ToVersion   string
 	Logger      *logger.Logger
+	Theme       theme.Theme
 }
 
 // New는 새로운 Manager 인스턴스를 생성합니다
@@ -2136,6 +1941,7 @@ func New(config Config) *Manager {
 		totalSteps:        config.TotalSteps,
 		currentStep:       0,
 		animationComplete: false,
+		currentTheme:      config.Theme,
 	}
 
 	manager.mainWindow = manager.app.NewWindow(fmt.Sprintf("%s Updater", config.AppName))
@@ -2146,7 +1952,8 @@ func New(config Config) *Manager {
 
 // initializeUI는 UI 컴포넌트들을 초기화하고 배치합니다
 func (m *Manager) initializeUI(config Config) {
-	m.statusCard = components.NewStatusCard(config.FromVersion, config.ToVersion)
+	// StatusCard 생성 시 테마 전달
+	m.statusCard = components.NewStatusCard(config.FromVersion, config.ToVersion, m.currentTheme)
 
 	// 이미 설정된 completion callback이 있다면 설정
 	if m.completionCallback != nil {
@@ -2158,7 +1965,11 @@ func (m *Manager) initializeUI(config Config) {
 		})
 	}
 
+	// 배경색 설정
 	content := container.NewPadded(m.statusCard)
+	content.Resize(fyne.NewSize(400, 200))
+
+	// 테마에 따른 배경색 설정
 	m.mainWindow.SetContent(content)
 	m.mainWindow.Resize(fyne.NewSize(400, 200))
 	m.mainWindow.CenterOnScreen()
@@ -2280,31 +2091,300 @@ var resourceIconPng = &fyne.StaticResource{
 }
 
 ```
+## internal/ui/theme/dark_theme.go
+```go
+// internal/ui/theme/dark_theme.go
+
+package theme
+
+import "image/color"
+
+// DarkTheme는 다크 모드 테마를 구현합니다
+type DarkTheme struct{}
+
+// NewDarkTheme는 새로운 다크 테마 인스턴스를 생성합니다
+func NewDarkTheme() *DarkTheme {
+	return &DarkTheme{}
+}
+
+// 기본 색상
+func (t *DarkTheme) BackgroundColor() color.Color {
+	return color.NRGBA{R: 12, G: 12, B: 19, A: 255} // #0C0C13
+}
+
+func (t *DarkTheme) TextColor() color.Color {
+	return color.NRGBA{R: 229, G: 231, B: 235, A: 255} // #E5E7EB
+}
+
+func (t *DarkTheme) SubTextColor() color.Color {
+	return color.NRGBA{R: 156, G: 163, B: 175, A: 255} // #9CA3AF
+}
+
+// 강조 색상
+func (t *DarkTheme) PrimaryColor() color.Color {
+	return color.NRGBA{R: 107, G: 105, B: 232, A: 255} // #6B69E8
+}
+
+// 상태 표시 색상
+func (t *DarkTheme) SuccessColor() color.Color {
+	return color.NRGBA{R: 34, G: 197, B: 94, A: 255} // #22C55E
+}
+
+func (t *DarkTheme) WarningColor() color.Color {
+	return color.NRGBA{R: 234, G: 179, B: 8, A: 255} // #EAB308
+}
+
+func (t *DarkTheme) ErrorColor() color.Color {
+	return color.NRGBA{R: 239, G: 68, B: 68, A: 255} // #EF4444
+}
+
+// 구분선 색상
+func (t *DarkTheme) DividerColor() color.Color {
+	return color.NRGBA{R: 31, G: 41, B: 55, A: 255} // #1F2937
+}
+
+// 폰트 크기
+func (t *DarkTheme) FontSizeSmall() float32 {
+	return DefaultFontSizeSmall
+}
+
+func (t *DarkTheme) FontSizeMedium() float32 {
+	return DefaultFontSizeMedium
+}
+
+func (t *DarkTheme) FontSizeLarge() float32 {
+	return DefaultFontSizeLarge
+}
+
+// 테마 모드
+func (t *DarkTheme) IsLight() bool {
+	return false
+}
+
+```
+## internal/ui/theme/light_theme.go
+```go
+// internal/ui/theme/light_theme.go
+
+package theme
+
+import "image/color"
+
+// LightTheme는 라이트 모드 테마를 구현합니다
+type LightTheme struct{}
+
+// NewLightTheme는 새로운 라이트 테마 인스턴스를 생성합니다
+func NewLightTheme() *LightTheme {
+	return &LightTheme{}
+}
+
+// 기본 색상
+func (t *LightTheme) BackgroundColor() color.Color {
+	return color.NRGBA{R: 255, G: 255, B: 255, A: 255} // #FFFFFF
+}
+
+func (t *LightTheme) TextColor() color.Color {
+	return color.NRGBA{R: 17, G: 24, B: 39, A: 255} // #111827
+}
+
+func (t *LightTheme) SubTextColor() color.Color {
+	return color.NRGBA{R: 107, G: 114, B: 128, A: 255} // #6B7280
+}
+
+// 강조 색상
+func (t *LightTheme) PrimaryColor() color.Color {
+	return color.NRGBA{R: 107, G: 105, B: 232, A: 255} // #6B69E8
+}
+
+// 상태 표시 색상
+func (t *LightTheme) SuccessColor() color.Color {
+	return color.NRGBA{R: 74, G: 222, B: 128, A: 255} // #4ADE80
+}
+
+func (t *LightTheme) WarningColor() color.Color {
+	return color.NRGBA{R: 251, G: 191, B: 36, A: 255} // #FBBF24
+}
+
+func (t *LightTheme) ErrorColor() color.Color {
+	return color.NRGBA{R: 248, G: 113, B: 113, A: 255} // #F87171
+}
+
+// 구분선 색상
+func (t *LightTheme) DividerColor() color.Color {
+	return color.NRGBA{R: 229, G: 231, B: 235, A: 255} // #E5E7EB
+}
+
+// 폰트 크기
+func (t *LightTheme) FontSizeSmall() float32 {
+	return DefaultFontSizeSmall
+}
+
+func (t *LightTheme) FontSizeMedium() float32 {
+	return DefaultFontSizeMedium
+}
+
+func (t *LightTheme) FontSizeLarge() float32 {
+	return DefaultFontSizeLarge
+}
+
+// 테마 모드
+func (t *LightTheme) IsLight() bool {
+	return true
+}
+
+```
 ## internal/ui/theme/theme.go
+```go
+// internal/ui/theme/theme.go
+
+package theme
+
+import (
+	"fmt"
+	"image/color"
+	"sync"
+)
+
+var (
+	// currentTheme은 현재 사용 중인 테마입니다
+	currentTheme Theme
+
+	// themeMutex는 테마 변경 시 동시성을 제어합니다
+	themeMutex sync.RWMutex
+)
+
+// InitTheme은 앱의 테마를 초기화합니다
+func InitTheme(mode string) error {
+	themeMutex.Lock()
+	defer themeMutex.Unlock()
+
+	switch mode {
+	case "light":
+		currentTheme = NewLightTheme()
+	case "dark":
+		currentTheme = NewDarkTheme()
+	default:
+		return fmt.Errorf("지원하지 않는 테마 모드: %s", mode)
+	}
+
+	return nil
+}
+
+// GetCurrentTheme은 현재 테마를 반환합니다
+func GetCurrentTheme() Theme {
+	themeMutex.RLock()
+	defer themeMutex.RUnlock()
+
+	if currentTheme == nil {
+		// 기본값으로 라이트 테마 사용
+		currentTheme = NewLightTheme()
+	}
+
+	return currentTheme
+}
+
+// SetTheme은 새로운 테마를 설정합니다
+func SetTheme(theme Theme) {
+	themeMutex.Lock()
+	defer themeMutex.Unlock()
+
+	currentTheme = theme
+}
+
+// 테마 모드 변경을 위한 헬퍼 함수들
+func ToggleTheme() {
+	themeMutex.Lock()
+	defer themeMutex.Unlock()
+
+	if currentTheme.IsLight() {
+		currentTheme = NewDarkTheme()
+	} else {
+		currentTheme = NewLightTheme()
+	}
+}
+
+// IsLightMode는 현재 라이트 모드인지 확인합니다
+func IsLightMode() bool {
+	return GetCurrentTheme().IsLight()
+}
+
+// IsDarkMode는 현재 다크 모드인지 확인합니다
+func IsDarkMode() bool {
+	return !GetCurrentTheme().IsLight()
+}
+
+// 테마 색상을 직접 가져오는 유틸리티 함수들
+func GetBackgroundColor() color.Color {
+	return GetCurrentTheme().BackgroundColor()
+}
+
+func GetTextColor() color.Color {
+	return GetCurrentTheme().TextColor()
+}
+
+func GetPrimaryColor() color.Color {
+	return GetCurrentTheme().PrimaryColor()
+}
+
+func GetSubTextColor() color.Color {
+	return GetCurrentTheme().SubTextColor()
+}
+
+func GetSuccessColor() color.Color {
+	return GetCurrentTheme().SuccessColor()
+}
+
+func GetWarningColor() color.Color {
+	return GetCurrentTheme().WarningColor()
+}
+
+func GetErrorColor() color.Color {
+	return GetCurrentTheme().ErrorColor()
+}
+
+func GetDividerColor() color.Color {
+	return GetCurrentTheme().DividerColor()
+}
+
+```
+## internal/ui/theme/types.go
 ```go
 package theme
 
 import "image/color"
 
-// Colors는 앱에서 사용하는 색상 테마를 정의합니다
-var (
+// Theme은 앱의 테마를 정의하는 인터페이스입니다
+type Theme interface {
 	// 기본 색상
-	BackgroundColor = color.NRGBA{R: 255, G: 255, B: 255, A: 255} // 흰색
-	TextColor       = color.NRGBA{R: 17, G: 24, B: 39, A: 255}    // 진한 회색
-	SubTextColor    = color.NRGBA{R: 107, G: 114, B: 128, A: 255} // 중간 회색
+	BackgroundColor() color.Color
+	TextColor() color.Color
+	SubTextColor() color.Color
+
+	// 강조 색상
+	PrimaryColor() color.Color
 
 	// 상태 표시 색상
-	ProgressColor = color.NRGBA{R: 59, G: 130, B: 246, A: 255}  // 파란색
-	SuccessColor  = color.NRGBA{R: 74, G: 222, B: 128, A: 255}  // 초록색
-	WarningColor  = color.NRGBA{R: 251, G: 191, B: 36, A: 255}  // 노란색
-	ErrorColor    = color.NRGBA{R: 248, G: 113, B: 113, A: 255} // 빨간색
-)
+	SuccessColor() color.Color
+	WarningColor() color.Color
+	ErrorColor() color.Color
 
-// FontSize는 텍스트 크기를 정의합니다
+	// 구분선 색상
+	DividerColor() color.Color
+
+	// 텍스트 크기
+	FontSizeSmall() float32
+	FontSizeMedium() float32
+	FontSizeLarge() float32
+
+	// 테마 모드
+	IsLight() bool
+}
+
+// CommonFontSizes는 공통으로 사용되는 폰트 크기를 정의합니다
 const (
-	FontSizeSmall  = 14 // 부가 설명용
-	FontSizeMedium = 16 // 일반 텍스트용
-	FontSizeLarge  = 20 // 제목용
+	DefaultFontSizeSmall  float32 = 14
+	DefaultFontSizeMedium float32 = 16
+	DefaultFontSizeLarge  float32 = 20
 )
 
 ```

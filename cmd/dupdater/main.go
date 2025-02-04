@@ -90,7 +90,7 @@ func main() {
 		Logger:      logger,
 		FromVersion: versionManager.GetFromVersion(),
 		ToVersion:   versionManager.GetToVersion(),
-		Theme:       theme.GetCurrentTheme(),
+		Theme:       theme.GetCurrentVariant(),
 	})
 
 	// 6. 네트워크 매니저 초기화
@@ -193,7 +193,7 @@ func runTestMode() {
 		Logger:      logger,
 		FromVersion: testVersionManager.GetFromVersion(),
 		ToVersion:   testVersionManager.GetToVersion(),
-		Theme:       theme.GetCurrentTheme(),
+		Theme:       theme.GetCurrentVariant(),
 	})
 
 	// UI 실행

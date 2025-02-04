@@ -20,7 +20,7 @@ type StatusCard struct {
 	versionText  *canvas.Text
 	progressBar  *widget.ProgressBar
 	subtitleText *canvas.Text
-	currentTheme theme.Theme
+	currentTheme theme.ThemeVariant
 
 	targetProgress  float64
 	currentProgress float64
@@ -30,12 +30,12 @@ type StatusCard struct {
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
-func NewStatusCard(fromVersion, toVersion string, theme theme.Theme) *StatusCard {
+func NewStatusCard(fromVersion, toVersion string, themeVariant theme.ThemeVariant) *StatusCard {
 	card := &StatusCard{
 		targetProgress:  0,
 		currentProgress: 0,
 		animating:       false,
-		currentTheme:    theme,
+		currentTheme:    themeVariant,
 	}
 	card.ExtendBaseWidget(card)
 	card.setupUI(fromVersion, toVersion)
@@ -49,7 +49,7 @@ func (s *StatusCard) CreateRenderer() fyne.WidgetRenderer {
 
 // setupUI는 UI 컴포넌트를 초기화합니다
 func (s *StatusCard) setupUI(fromVersion, toVersion string) {
-	// 타이틀 (현재 테마의 색상 사용)
+	// 타이틀
 	s.titleText = canvas.NewText("새로운 업데이트가 있습니다", s.currentTheme.TextColor())
 	s.titleText.TextSize = s.currentTheme.FontSizeLarge()
 	s.titleText.TextStyle = fyne.TextStyle{Bold: true}
@@ -60,6 +60,7 @@ func (s *StatusCard) setupUI(fromVersion, toVersion string) {
 
 	// 진행 바
 	s.progressBar = widget.NewProgressBar()
+	s.progressBar.Resize(fyne.NewSize(350, 20))
 
 	// 상태 메시지
 	s.subtitleText = canvas.NewText("업데이트가 완료되면 자동으로 앱이 다시 시작됩니다.", s.currentTheme.SubTextColor())
@@ -83,7 +84,7 @@ func (s *StatusCard) SetError(errMsg string) {
 	s.subtitleText.Text = errMsg
 	s.subtitleText.Color = s.currentTheme.ErrorColor()
 	s.progressBar.Hide()
-	s.container.Refresh()
+	s.Refresh()
 }
 
 // SetRestoring는 복원 진행 상태를 표시합니다
@@ -93,7 +94,7 @@ func (s *StatusCard) SetRestoring(msg string) {
 	s.subtitleText.Text = msg
 	s.subtitleText.Color = s.currentTheme.WarningColor()
 	s.progressBar.Show()
-	s.container.Refresh()
+	s.Refresh()
 }
 
 // SetRestoreComplete는 복원 완료 상태를 표시합니다
@@ -103,7 +104,7 @@ func (s *StatusCard) SetRestoreComplete() {
 	s.subtitleText.Text = "앱이 곧 다시 시작됩니다"
 	s.subtitleText.Color = s.currentTheme.SuccessColor()
 	s.progressBar.Hide()
-	s.container.Refresh()
+	s.Refresh()
 }
 
 // UpdateStatus는 상태와 진행률을 업데이트합니다
@@ -119,19 +120,24 @@ func (s *StatusCard) UpdateStatus(progress float64, message string) {
 	}
 
 	s.progressBar.Show()
-	s.container.Refresh()
+	s.Refresh()
 }
 
 // SetProgress는 다운로드 진행률을 업데이트합니다
 func (s *StatusCard) SetProgress(current, total int64) {
 	progress := float64(current) / float64(total)
 	s.progressBar.SetValue(progress)
-	s.container.Refresh()
+	s.Refresh()
 }
 
 // SetCompletionCallback은 진행률 100% 도달 시 실행될 콜백을 설정합니다
 func (s *StatusCard) SetCompletionCallback(callback func()) {
 	s.onComplete = callback
+}
+
+// Refresh는 위젯을 새로고침합니다
+func (s *StatusCard) Refresh() {
+	s.container.Refresh()
 }
 
 // 부드러운 진행률 업데이트를 위한 메서드

@@ -26,7 +26,7 @@ type Manager struct {
 	logger       *logger.Logger
 	totalSteps   int
 	currentStep  int
-	currentTheme theme.Theme
+	currentTheme theme.ThemeVariant
 	statusCard   *components.StatusCard
 	onRestore    func()
 
@@ -41,13 +41,18 @@ type Config struct {
 	FromVersion string
 	ToVersion   string
 	Logger      *logger.Logger
-	Theme       theme.Theme
+	Theme       theme.ThemeVariant
 }
 
 // New는 새로운 Manager 인스턴스를 생성합니다
 func New(config Config) *Manager {
+	// 앱 생성 및 테마 설정
+	fyneApp := app.New()
+	customTheme := theme.NewCustomTheme(config.Theme)
+	fyneApp.Settings().SetTheme(customTheme)
+
 	manager := &Manager{
-		app:               app.New(),
+		app:               fyneApp,
 		logger:            config.Logger,
 		totalSteps:        config.TotalSteps,
 		currentStep:       0,
@@ -55,6 +60,7 @@ func New(config Config) *Manager {
 		currentTheme:      config.Theme,
 	}
 
+	// 메인 윈도우 생성
 	manager.mainWindow = manager.app.NewWindow(fmt.Sprintf("%s Updater", config.AppName))
 	manager.initializeUI(config)
 
@@ -80,7 +86,6 @@ func (m *Manager) initializeUI(config Config) {
 	content := container.NewPadded(m.statusCard)
 	content.Resize(fyne.NewSize(400, 200))
 
-	// 테마에 따른 배경색 설정
 	m.mainWindow.SetContent(content)
 	m.mainWindow.Resize(fyne.NewSize(400, 200))
 	m.mainWindow.CenterOnScreen()
@@ -120,6 +125,7 @@ func (m *Manager) GetTotalSteps() int {
 	return m.totalSteps
 }
 
+// SetCompletionCallback은 완료 콜백을 설정합니다
 func (m *Manager) SetCompletionCallback(callback func()) {
 	m.completionCallback = callback
 	if m.statusCard != nil {
@@ -166,16 +172,6 @@ func (m *Manager) ShowRestoreComplete() {
 // SetRestoreHandler는 복구 핸들러를 설정합니다
 func (m *Manager) SetRestoreHandler(handler func()) {
 	m.onRestore = handler
-}
-
-// 상태 카드의 애니메이션 완료 콜백을 처리하는 메서드 추가
-func (m *Manager) onAnimationComplete() {
-	if !m.animationComplete && m.currentStep == m.totalSteps-1 {
-		m.animationComplete = true
-		if m.completionCallback != nil {
-			m.completionCallback()
-		}
-	}
 }
 
 // Run은 UI를 실행합니다
