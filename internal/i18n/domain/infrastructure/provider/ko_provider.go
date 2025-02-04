@@ -1,11 +1,13 @@
-package locale
+package provider
+
+import "github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
 
 // KoreanProvider는 한국어 메시지를 제공하는 구조체입니다
 type KoreanProvider struct{}
 
 // GetLanguageCode는 언어 코드를 반환합니다
-func (p *KoreanProvider) GetLanguageCode() string {
-	return "ko"
+func (p *KoreanProvider) GetLocale() *entity.Locale {
+	return entity.NewLocale(entity.Korean)
 }
 
 // GetMessages는 한국어 메시지 맵을 반환합니다
