@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
 )
 
@@ -21,6 +22,7 @@ type StatusCard struct {
 	progressBar  *widget.ProgressBar
 	subtitleText *canvas.Text
 	currentTheme theme.ThemeVariant
+	i18n         i18n.LocaleManager
 
 	targetProgress  float64
 	currentProgress float64
@@ -30,12 +32,13 @@ type StatusCard struct {
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
-func NewStatusCard(fromVersion, toVersion string, themeVariant theme.ThemeVariant) *StatusCard {
+func NewStatusCard(fromVersion, toVersion string, themeVariant theme.ThemeVariant, i18n i18n.LocaleManager) *StatusCard {
 	card := &StatusCard{
 		targetProgress:  0,
 		currentProgress: 0,
 		animating:       false,
 		currentTheme:    themeVariant,
+		i18n:            i18n,
 	}
 	card.ExtendBaseWidget(card)
 	card.setupUI(fromVersion, toVersion)
@@ -49,13 +52,17 @@ func (s *StatusCard) CreateRenderer() fyne.WidgetRenderer {
 
 // setupUI는 UI 컴포넌트를 초기화합니다
 func (s *StatusCard) setupUI(fromVersion, toVersion string) {
-	// 타이틀
-	s.titleText = canvas.NewText("새로운 업데이트가 있습니다", s.currentTheme.TextColor())
+	// 타이틀 텍스트
+	s.titleText = canvas.NewText(
+		s.i18n.GetMessage("update.header.new_update"),
+		s.currentTheme.TextColor(),
+	)
 	s.titleText.TextSize = s.currentTheme.FontSizeLarge()
 	s.titleText.TextStyle = fyne.TextStyle{Bold: true}
 
 	// 버전 정보
-	s.versionText = canvas.NewText(fmt.Sprintf("%s → %s", fromVersion, toVersion), s.currentTheme.SubTextColor())
+	versionFormat := fmt.Sprintf("%s → %s", fromVersion, toVersion)
+	s.versionText = canvas.NewText(versionFormat, s.currentTheme.SubTextColor())
 	s.versionText.TextSize = s.currentTheme.FontSizeMedium()
 
 	// 진행 바
@@ -63,7 +70,10 @@ func (s *StatusCard) setupUI(fromVersion, toVersion string) {
 	s.progressBar.Resize(fyne.NewSize(350, 20))
 
 	// 상태 메시지
-	s.subtitleText = canvas.NewText("업데이트가 완료되면 자동으로 앱이 다시 시작됩니다.", s.currentTheme.SubTextColor())
+	s.subtitleText = canvas.NewText(
+		s.i18n.GetMessage("update.info.restart"),
+		s.currentTheme.SubTextColor(),
+	)
 	s.subtitleText.TextSize = s.currentTheme.FontSizeSmall()
 
 	// 레이아웃 구성
@@ -79,7 +89,7 @@ func (s *StatusCard) setupUI(fromVersion, toVersion string) {
 
 // SetError는 에러 상태를 표시합니다
 func (s *StatusCard) SetError(errMsg string) {
-	s.titleText.Text = "업데이트 중 오류가 발생했습니다"
+	s.titleText.Text = s.i18n.GetMessage("update.error.generic")
 	s.titleText.Color = s.currentTheme.ErrorColor()
 	s.subtitleText.Text = errMsg
 	s.subtitleText.Color = s.currentTheme.ErrorColor()
@@ -89,7 +99,7 @@ func (s *StatusCard) SetError(errMsg string) {
 
 // SetRestoring는 복원 진행 상태를 표시합니다
 func (s *StatusCard) SetRestoring(msg string) {
-	s.titleText.Text = "이전 버전으로 복원 중"
+	s.titleText.Text = s.i18n.GetMessage("update.restore.in_progress")
 	s.titleText.Color = s.currentTheme.WarningColor()
 	s.subtitleText.Text = msg
 	s.subtitleText.Color = s.currentTheme.WarningColor()
@@ -99,9 +109,9 @@ func (s *StatusCard) SetRestoring(msg string) {
 
 // SetRestoreComplete는 복원 완료 상태를 표시합니다
 func (s *StatusCard) SetRestoreComplete() {
-	s.titleText.Text = "복원이 완료되었습니다"
+	s.titleText.Text = s.i18n.GetMessage("update.restore.completed")
 	s.titleText.Color = s.currentTheme.SuccessColor()
-	s.subtitleText.Text = "앱이 곧 다시 시작됩니다"
+	s.subtitleText.Text = s.i18n.GetMessage("update.info.restart")
 	s.subtitleText.Color = s.currentTheme.SuccessColor()
 	s.progressBar.Hide()
 	s.Refresh()
@@ -109,7 +119,6 @@ func (s *StatusCard) SetRestoreComplete() {
 
 // UpdateStatus는 상태와 진행률을 업데이트합니다
 func (s *StatusCard) UpdateStatus(progress float64, message string) {
-	s.titleText.Text = "업데이트 진행 중"
 	s.titleText.Color = s.currentTheme.TextColor()
 	s.subtitleText.Text = message
 	s.subtitleText.Color = s.currentTheme.SubTextColor()

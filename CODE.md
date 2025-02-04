@@ -22,9 +22,9 @@ dupdater/
     │   │   ├── resources.go
     │   │   └── status_card.go
     │   ├── theme/
-    │   │   ├── dark_theme.go
-    │   │   ├── light_theme.go
-    │   │   ├── theme.go
+    │   │   ├── dark_variant.go
+    │   │   ├── light_variant.go
+    │   │   ├── theme_variant.go
     │   │   └── types.go
     │   ├── manager.go
     │   └── resources.go
@@ -216,7 +216,7 @@ func main() {
 		Logger:      logger,
 		FromVersion: versionManager.GetFromVersion(),
 		ToVersion:   versionManager.GetToVersion(),
-		Theme:       theme.GetCurrentTheme(),
+		Theme:       theme.GetCurrentVariant(),
 	})
 
 	// 6. 네트워크 매니저 초기화
@@ -319,7 +319,7 @@ func runTestMode() {
 		Logger:      logger,
 		FromVersion: testVersionManager.GetFromVersion(),
 		ToVersion:   testVersionManager.GetToVersion(),
-		Theme:       theme.GetCurrentTheme(),
+		Theme:       theme.GetCurrentVariant(),
 	})
 
 	// UI 실행
@@ -1728,7 +1728,7 @@ type StatusCard struct {
 	versionText  *canvas.Text
 	progressBar  *widget.ProgressBar
 	subtitleText *canvas.Text
-	currentTheme theme.Theme
+	currentTheme theme.ThemeVariant
 
 	targetProgress  float64
 	currentProgress float64
@@ -1738,12 +1738,12 @@ type StatusCard struct {
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
-func NewStatusCard(fromVersion, toVersion string, theme theme.Theme) *StatusCard {
+func NewStatusCard(fromVersion, toVersion string, themeVariant theme.ThemeVariant) *StatusCard {
 	card := &StatusCard{
 		targetProgress:  0,
 		currentProgress: 0,
 		animating:       false,
-		currentTheme:    theme,
+		currentTheme:    themeVariant,
 	}
 	card.ExtendBaseWidget(card)
 	card.setupUI(fromVersion, toVersion)
@@ -1757,7 +1757,7 @@ func (s *StatusCard) CreateRenderer() fyne.WidgetRenderer {
 
 // setupUI는 UI 컴포넌트를 초기화합니다
 func (s *StatusCard) setupUI(fromVersion, toVersion string) {
-	// 타이틀 (현재 테마의 색상 사용)
+	// 타이틀
 	s.titleText = canvas.NewText("새로운 업데이트가 있습니다", s.currentTheme.TextColor())
 	s.titleText.TextSize = s.currentTheme.FontSizeLarge()
 	s.titleText.TextStyle = fyne.TextStyle{Bold: true}
@@ -1768,6 +1768,7 @@ func (s *StatusCard) setupUI(fromVersion, toVersion string) {
 
 	// 진행 바
 	s.progressBar = widget.NewProgressBar()
+	s.progressBar.Resize(fyne.NewSize(350, 20))
 
 	// 상태 메시지
 	s.subtitleText = canvas.NewText("업데이트가 완료되면 자동으로 앱이 다시 시작됩니다.", s.currentTheme.SubTextColor())
@@ -1791,7 +1792,7 @@ func (s *StatusCard) SetError(errMsg string) {
 	s.subtitleText.Text = errMsg
 	s.subtitleText.Color = s.currentTheme.ErrorColor()
 	s.progressBar.Hide()
-	s.container.Refresh()
+	s.Refresh()
 }
 
 // SetRestoring는 복원 진행 상태를 표시합니다
@@ -1801,7 +1802,7 @@ func (s *StatusCard) SetRestoring(msg string) {
 	s.subtitleText.Text = msg
 	s.subtitleText.Color = s.currentTheme.WarningColor()
 	s.progressBar.Show()
-	s.container.Refresh()
+	s.Refresh()
 }
 
 // SetRestoreComplete는 복원 완료 상태를 표시합니다
@@ -1811,7 +1812,7 @@ func (s *StatusCard) SetRestoreComplete() {
 	s.subtitleText.Text = "앱이 곧 다시 시작됩니다"
 	s.subtitleText.Color = s.currentTheme.SuccessColor()
 	s.progressBar.Hide()
-	s.container.Refresh()
+	s.Refresh()
 }
 
 // UpdateStatus는 상태와 진행률을 업데이트합니다
@@ -1827,19 +1828,24 @@ func (s *StatusCard) UpdateStatus(progress float64, message string) {
 	}
 
 	s.progressBar.Show()
-	s.container.Refresh()
+	s.Refresh()
 }
 
 // SetProgress는 다운로드 진행률을 업데이트합니다
 func (s *StatusCard) SetProgress(current, total int64) {
 	progress := float64(current) / float64(total)
 	s.progressBar.SetValue(progress)
-	s.container.Refresh()
+	s.Refresh()
 }
 
 // SetCompletionCallback은 진행률 100% 도달 시 실행될 콜백을 설정합니다
 func (s *StatusCard) SetCompletionCallback(callback func()) {
 	s.onComplete = callback
+}
+
+// Refresh는 위젯을 새로고침합니다
+func (s *StatusCard) Refresh() {
+	s.container.Refresh()
 }
 
 // 부드러운 진행률 업데이트를 위한 메서드
@@ -1915,7 +1921,7 @@ type Manager struct {
 	logger       *logger.Logger
 	totalSteps   int
 	currentStep  int
-	currentTheme theme.Theme
+	currentTheme theme.ThemeVariant
 	statusCard   *components.StatusCard
 	onRestore    func()
 
@@ -1930,13 +1936,18 @@ type Config struct {
 	FromVersion string
 	ToVersion   string
 	Logger      *logger.Logger
-	Theme       theme.Theme
+	Theme       theme.ThemeVariant
 }
 
 // New는 새로운 Manager 인스턴스를 생성합니다
 func New(config Config) *Manager {
+	// 앱 생성 및 테마 설정
+	fyneApp := app.New()
+	customTheme := theme.NewCustomTheme(config.Theme)
+	fyneApp.Settings().SetTheme(customTheme)
+
 	manager := &Manager{
-		app:               app.New(),
+		app:               fyneApp,
 		logger:            config.Logger,
 		totalSteps:        config.TotalSteps,
 		currentStep:       0,
@@ -1944,6 +1955,7 @@ func New(config Config) *Manager {
 		currentTheme:      config.Theme,
 	}
 
+	// 메인 윈도우 생성
 	manager.mainWindow = manager.app.NewWindow(fmt.Sprintf("%s Updater", config.AppName))
 	manager.initializeUI(config)
 
@@ -1969,7 +1981,6 @@ func (m *Manager) initializeUI(config Config) {
 	content := container.NewPadded(m.statusCard)
 	content.Resize(fyne.NewSize(400, 200))
 
-	// 테마에 따른 배경색 설정
 	m.mainWindow.SetContent(content)
 	m.mainWindow.Resize(fyne.NewSize(400, 200))
 	m.mainWindow.CenterOnScreen()
@@ -2009,6 +2020,7 @@ func (m *Manager) GetTotalSteps() int {
 	return m.totalSteps
 }
 
+// SetCompletionCallback은 완료 콜백을 설정합니다
 func (m *Manager) SetCompletionCallback(callback func()) {
 	m.completionCallback = callback
 	if m.statusCard != nil {
@@ -2057,16 +2069,6 @@ func (m *Manager) SetRestoreHandler(handler func()) {
 	m.onRestore = handler
 }
 
-// 상태 카드의 애니메이션 완료 콜백을 처리하는 메서드 추가
-func (m *Manager) onAnimationComplete() {
-	if !m.animationComplete && m.currentStep == m.totalSteps-1 {
-		m.animationComplete = true
-		if m.completionCallback != nil {
-			m.completionCallback()
-		}
-	}
-}
-
 // Run은 UI를 실행합니다
 func (m *Manager) Run() {
 	m.mainWindow.ShowAndRun()
@@ -2091,152 +2093,146 @@ var resourceIconPng = &fyne.StaticResource{
 }
 
 ```
-## internal/ui/theme/dark_theme.go
+## internal/ui/theme/dark_variant.go
 ```go
-// internal/ui/theme/dark_theme.go
-
 package theme
 
 import "image/color"
 
-// DarkTheme는 다크 모드 테마를 구현합니다
-type DarkTheme struct{}
+// DarkVariant는 다크 모드 테마를 구현합니다
+type DarkVariant struct{}
 
-// NewDarkTheme는 새로운 다크 테마 인스턴스를 생성합니다
-func NewDarkTheme() *DarkTheme {
-	return &DarkTheme{}
+// NewDarkVariant는 새로운 다크 테마 인스턴스를 생성합니다
+func NewDarkVariant() *DarkVariant {
+	return &DarkVariant{}
 }
 
 // 기본 색상
-func (t *DarkTheme) BackgroundColor() color.Color {
+func (t *DarkVariant) BackgroundColor() color.Color {
 	return color.NRGBA{R: 12, G: 12, B: 19, A: 255} // #0C0C13
 }
 
-func (t *DarkTheme) TextColor() color.Color {
+func (t *DarkVariant) TextColor() color.Color {
 	return color.NRGBA{R: 229, G: 231, B: 235, A: 255} // #E5E7EB
 }
 
-func (t *DarkTheme) SubTextColor() color.Color {
+func (t *DarkVariant) SubTextColor() color.Color {
 	return color.NRGBA{R: 156, G: 163, B: 175, A: 255} // #9CA3AF
 }
 
 // 강조 색상
-func (t *DarkTheme) PrimaryColor() color.Color {
+func (t *DarkVariant) PrimaryColor() color.Color {
 	return color.NRGBA{R: 107, G: 105, B: 232, A: 255} // #6B69E8
 }
 
 // 상태 표시 색상
-func (t *DarkTheme) SuccessColor() color.Color {
+func (t *DarkVariant) SuccessColor() color.Color {
 	return color.NRGBA{R: 34, G: 197, B: 94, A: 255} // #22C55E
 }
 
-func (t *DarkTheme) WarningColor() color.Color {
+func (t *DarkVariant) WarningColor() color.Color {
 	return color.NRGBA{R: 234, G: 179, B: 8, A: 255} // #EAB308
 }
 
-func (t *DarkTheme) ErrorColor() color.Color {
+func (t *DarkVariant) ErrorColor() color.Color {
 	return color.NRGBA{R: 239, G: 68, B: 68, A: 255} // #EF4444
 }
 
 // 구분선 색상
-func (t *DarkTheme) DividerColor() color.Color {
+func (t *DarkVariant) DividerColor() color.Color {
 	return color.NRGBA{R: 31, G: 41, B: 55, A: 255} // #1F2937
 }
 
 // 폰트 크기
-func (t *DarkTheme) FontSizeSmall() float32 {
+func (t *DarkVariant) FontSizeSmall() float32 {
 	return DefaultFontSizeSmall
 }
 
-func (t *DarkTheme) FontSizeMedium() float32 {
+func (t *DarkVariant) FontSizeMedium() float32 {
 	return DefaultFontSizeMedium
 }
 
-func (t *DarkTheme) FontSizeLarge() float32 {
+func (t *DarkVariant) FontSizeLarge() float32 {
 	return DefaultFontSizeLarge
 }
 
 // 테마 모드
-func (t *DarkTheme) IsLight() bool {
+func (t *DarkVariant) IsLight() bool {
 	return false
 }
 
 ```
-## internal/ui/theme/light_theme.go
+## internal/ui/theme/light_variant.go
 ```go
-// internal/ui/theme/light_theme.go
-
 package theme
 
 import "image/color"
 
-// LightTheme는 라이트 모드 테마를 구현합니다
-type LightTheme struct{}
+// LightVariant는 라이트 모드 테마를 구현합니다
+type LightVariant struct{}
 
-// NewLightTheme는 새로운 라이트 테마 인스턴스를 생성합니다
-func NewLightTheme() *LightTheme {
-	return &LightTheme{}
+// NewLightVariant는 새로운 라이트 테마 인스턴스를 생성합니다
+func NewLightVariant() *LightVariant {
+	return &LightVariant{}
 }
 
 // 기본 색상
-func (t *LightTheme) BackgroundColor() color.Color {
+func (t *LightVariant) BackgroundColor() color.Color {
 	return color.NRGBA{R: 255, G: 255, B: 255, A: 255} // #FFFFFF
 }
 
-func (t *LightTheme) TextColor() color.Color {
+func (t *LightVariant) TextColor() color.Color {
 	return color.NRGBA{R: 17, G: 24, B: 39, A: 255} // #111827
 }
 
-func (t *LightTheme) SubTextColor() color.Color {
+func (t *LightVariant) SubTextColor() color.Color {
 	return color.NRGBA{R: 107, G: 114, B: 128, A: 255} // #6B7280
 }
 
 // 강조 색상
-func (t *LightTheme) PrimaryColor() color.Color {
+func (t *LightVariant) PrimaryColor() color.Color {
 	return color.NRGBA{R: 107, G: 105, B: 232, A: 255} // #6B69E8
 }
 
 // 상태 표시 색상
-func (t *LightTheme) SuccessColor() color.Color {
+func (t *LightVariant) SuccessColor() color.Color {
 	return color.NRGBA{R: 74, G: 222, B: 128, A: 255} // #4ADE80
 }
 
-func (t *LightTheme) WarningColor() color.Color {
+func (t *LightVariant) WarningColor() color.Color {
 	return color.NRGBA{R: 251, G: 191, B: 36, A: 255} // #FBBF24
 }
 
-func (t *LightTheme) ErrorColor() color.Color {
+func (t *LightVariant) ErrorColor() color.Color {
 	return color.NRGBA{R: 248, G: 113, B: 113, A: 255} // #F87171
 }
 
 // 구분선 색상
-func (t *LightTheme) DividerColor() color.Color {
+func (t *LightVariant) DividerColor() color.Color {
 	return color.NRGBA{R: 229, G: 231, B: 235, A: 255} // #E5E7EB
 }
 
 // 폰트 크기
-func (t *LightTheme) FontSizeSmall() float32 {
+func (t *LightVariant) FontSizeSmall() float32 {
 	return DefaultFontSizeSmall
 }
 
-func (t *LightTheme) FontSizeMedium() float32 {
+func (t *LightVariant) FontSizeMedium() float32 {
 	return DefaultFontSizeMedium
 }
 
-func (t *LightTheme) FontSizeLarge() float32 {
+func (t *LightVariant) FontSizeLarge() float32 {
 	return DefaultFontSizeLarge
 }
 
 // 테마 모드
-func (t *LightTheme) IsLight() bool {
+func (t *LightVariant) IsLight() bool {
 	return true
 }
 
 ```
-## internal/ui/theme/theme.go
+## internal/ui/theme/theme_variant.go
 ```go
-// internal/ui/theme/theme.go
-
 package theme
 
 import (
@@ -2246,8 +2242,11 @@ import (
 )
 
 var (
-	// currentTheme은 현재 사용 중인 테마입니다
-	currentTheme Theme
+	// currentVariant는 현재 사용 중인 테마 변형입니다
+	currentVariant ThemeVariant
+
+	// currentTheme은 현재 사용 중인 Fyne 테마입니다
+	currentTheme *CustomTheme
 
 	// themeMutex는 테마 변경 시 동시성을 제어합니다
 	themeMutex sync.RWMutex
@@ -2260,35 +2259,50 @@ func InitTheme(mode string) error {
 
 	switch mode {
 	case "light":
-		currentTheme = NewLightTheme()
+		currentVariant = NewLightVariant()
 	case "dark":
-		currentTheme = NewDarkTheme()
+		currentVariant = NewDarkVariant()
 	default:
 		return fmt.Errorf("지원하지 않는 테마 모드: %s", mode)
 	}
 
+	currentTheme = NewCustomTheme(currentVariant)
 	return nil
 }
 
-// GetCurrentTheme은 현재 테마를 반환합니다
-func GetCurrentTheme() Theme {
+// GetCurrentTheme은 현재 Fyne 테마를 반환합니다
+func GetCurrentTheme() *CustomTheme {
 	themeMutex.RLock()
 	defer themeMutex.RUnlock()
 
 	if currentTheme == nil {
 		// 기본값으로 라이트 테마 사용
-		currentTheme = NewLightTheme()
+		currentVariant = NewLightVariant()
+		currentTheme = NewCustomTheme(currentVariant)
 	}
 
 	return currentTheme
 }
 
+// GetCurrentVariant는 현재 테마 변형을 반환합니다
+func GetCurrentVariant() ThemeVariant {
+	themeMutex.RLock()
+	defer themeMutex.RUnlock()
+
+	if currentVariant == nil {
+		currentVariant = NewLightVariant()
+	}
+
+	return currentVariant
+}
+
 // SetTheme은 새로운 테마를 설정합니다
-func SetTheme(theme Theme) {
+func SetTheme(variant ThemeVariant) {
 	themeMutex.Lock()
 	defer themeMutex.Unlock()
 
-	currentTheme = theme
+	currentVariant = variant
+	currentTheme = NewCustomTheme(variant)
 }
 
 // 테마 모드 변경을 위한 헬퍼 함수들
@@ -2296,54 +2310,55 @@ func ToggleTheme() {
 	themeMutex.Lock()
 	defer themeMutex.Unlock()
 
-	if currentTheme.IsLight() {
-		currentTheme = NewDarkTheme()
+	if currentVariant.IsLight() {
+		currentVariant = NewDarkVariant()
 	} else {
-		currentTheme = NewLightTheme()
+		currentVariant = NewLightVariant()
 	}
+	currentTheme = NewCustomTheme(currentVariant)
 }
 
 // IsLightMode는 현재 라이트 모드인지 확인합니다
 func IsLightMode() bool {
-	return GetCurrentTheme().IsLight()
+	return GetCurrentVariant().IsLight()
 }
 
 // IsDarkMode는 현재 다크 모드인지 확인합니다
 func IsDarkMode() bool {
-	return !GetCurrentTheme().IsLight()
+	return !GetCurrentVariant().IsLight()
 }
 
 // 테마 색상을 직접 가져오는 유틸리티 함수들
 func GetBackgroundColor() color.Color {
-	return GetCurrentTheme().BackgroundColor()
+	return GetCurrentVariant().BackgroundColor()
 }
 
 func GetTextColor() color.Color {
-	return GetCurrentTheme().TextColor()
+	return GetCurrentVariant().TextColor()
 }
 
 func GetPrimaryColor() color.Color {
-	return GetCurrentTheme().PrimaryColor()
+	return GetCurrentVariant().PrimaryColor()
 }
 
 func GetSubTextColor() color.Color {
-	return GetCurrentTheme().SubTextColor()
+	return GetCurrentVariant().SubTextColor()
 }
 
 func GetSuccessColor() color.Color {
-	return GetCurrentTheme().SuccessColor()
+	return GetCurrentVariant().SuccessColor()
 }
 
 func GetWarningColor() color.Color {
-	return GetCurrentTheme().WarningColor()
+	return GetCurrentVariant().WarningColor()
 }
 
 func GetErrorColor() color.Color {
-	return GetCurrentTheme().ErrorColor()
+	return GetCurrentVariant().ErrorColor()
 }
 
 func GetDividerColor() color.Color {
-	return GetCurrentTheme().DividerColor()
+	return GetCurrentVariant().DividerColor()
 }
 
 ```
@@ -2351,10 +2366,15 @@ func GetDividerColor() color.Color {
 ```go
 package theme
 
-import "image/color"
+import (
+	"image/color"
 
-// Theme은 앱의 테마를 정의하는 인터페이스입니다
-type Theme interface {
+	"fyne.io/fyne/v2"
+	baseTheme "fyne.io/fyne/v2/theme"
+)
+
+// ThemeVariant는 테마의 색상과 스타일을 정의하는 인터페이스입니다
+type ThemeVariant interface {
 	// 기본 색상
 	BackgroundColor() color.Color
 	TextColor() color.Color
@@ -2380,12 +2400,73 @@ type Theme interface {
 	IsLight() bool
 }
 
+// CustomTheme은 Fyne의 테마 인터페이스를 구현하는 커스텀 테마입니다
+type CustomTheme struct {
+	variant ThemeVariant
+}
+
 // CommonFontSizes는 공통으로 사용되는 폰트 크기를 정의합니다
 const (
 	DefaultFontSizeSmall  float32 = 14
 	DefaultFontSizeMedium float32 = 16
 	DefaultFontSizeLarge  float32 = 20
 )
+
+// NewCustomTheme은 새로운 CustomTheme 인스턴스를 생성합니다
+func NewCustomTheme(variant ThemeVariant) *CustomTheme {
+	return &CustomTheme{
+		variant: variant,
+	}
+}
+
+// Fyne Theme 인터페이스 구현
+func (t *CustomTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	switch name {
+	case baseTheme.ColorNameBackground:
+		return t.variant.BackgroundColor()
+	case baseTheme.ColorNameForeground:
+		return t.variant.TextColor()
+	case baseTheme.ColorNamePrimary:
+		return t.variant.PrimaryColor()
+	case baseTheme.ColorNameError:
+		return t.variant.ErrorColor()
+	default:
+		if t.variant.IsLight() {
+			return baseTheme.LightTheme().Color(name, variant)
+		}
+		return baseTheme.DarkTheme().Color(name, variant)
+	}
+}
+
+func (t *CustomTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
+	if t.variant.IsLight() {
+		return baseTheme.LightTheme().Icon(name)
+	}
+	return baseTheme.DarkTheme().Icon(name)
+}
+
+func (t *CustomTheme) Font(style fyne.TextStyle) fyne.Resource {
+	if t.variant.IsLight() {
+		return baseTheme.LightTheme().Font(style)
+	}
+	return baseTheme.DarkTheme().Font(style)
+}
+
+func (t *CustomTheme) Size(name fyne.ThemeSizeName) float32 {
+	switch name {
+	case baseTheme.SizeNameText:
+		return t.variant.FontSizeMedium()
+	case baseTheme.SizeNameHeadingText:
+		return t.variant.FontSizeLarge()
+	case baseTheme.SizeNameCaptionText:
+		return t.variant.FontSizeSmall()
+	default:
+		if t.variant.IsLight() {
+			return baseTheme.LightTheme().Size(name)
+		}
+		return baseTheme.DarkTheme().Size(name)
+	}
+}
 
 ```
 ## internal/version/manger.go

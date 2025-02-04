@@ -9,6 +9,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/app"
 	"github.com/kihyun1998/dupdater/internal/file"
 	"github.com/kihyun1998/dupdater/internal/hash"
+	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/internal/ui"
@@ -28,6 +29,7 @@ var (
 	serverName  = flag.String("server", "server1", "서버 프로필 이름")
 	testMode    = flag.Bool("test", false, "UI 테스트 모드")
 	themeMode   = flag.String("theme", "light", "테마 모드 (light/dark)")
+	langMode    = flag.String("lang", "ko", "언어 설정 (ko/en)")
 )
 
 func main() {
@@ -40,9 +42,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 3. i18n 매니저 초기화
+	i18nManager, err := i18n.New(i18n.Config{
+		DefaultLang: *langMode,
+	})
+	if err != nil {
+		fmt.Printf("다국어 지원 초기화 실패: %v\n", err)
+		os.Exit(1)
+	}
+
 	// 테스트 모드 체크
 	if *testMode {
-		runTestMode()
+		runTestMode(i18nManager)
 		return
 	}
 
@@ -53,7 +64,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. 로거 초기화
+	// 4. 로거 초기화
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
 		LogPath:    logPath,
@@ -69,7 +80,7 @@ func main() {
 
 	logger.Info("Starting updater - version: %s, server: %s", *fromVersion, *serverName)
 
-	// 4. 버전 매니저 초기화
+	// 5. 버전 매니저 초기화
 	versionManager, err := version.New(version.Config{
 		Logger:      logger,
 		FromVersion: *fromVersion,
@@ -83,7 +94,7 @@ func main() {
 	// 버전 매니저 초기화 후 로깅
 	logger.Info("업데이트 진행: %s -> %s", versionManager.GetFromVersion(), versionManager.GetToVersion())
 
-	// 5. UI 매니저 초기화
+	// 6. UI 매니저 초기화
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
@@ -91,14 +102,15 @@ func main() {
 		FromVersion: versionManager.GetFromVersion(),
 		ToVersion:   versionManager.GetToVersion(),
 		Theme:       theme.GetCurrentVariant(),
+		I18n:        i18nManager,
 	})
 
-	// 6. 네트워크 매니저 초기화
+	// 7. 네트워크 매니저 초기화
 	networkManager := network.New(network.Config{
 		Logger: logger,
 	})
 
-	// 7. 파일 매니저 초기화
+	// 8. 파일 매니저 초기화
 	fileManager, err := file.New(file.Config{
 		Logger:     logger,
 		BackupDir:  filepath.Join(os.TempDir(), "ACRABACK"),
@@ -110,7 +122,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 8. 해시 매니저 초기화
+	// 9. 해시 매니저 초기화
 	hashManager, err := hash.New(hash.Config{
 		Logger:     logger,
 		CurrentDir: getCurrentDir(),
@@ -121,7 +133,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 9. Updater 생성 및 시작
+	// 10. Updater 생성 및 시작
 	updater := app.New(app.Config{
 		AppName:         TargetAppName,
 		FromVersion:     *fromVersion,
@@ -134,7 +146,7 @@ func main() {
 		HashManager:     hashManager,
 	})
 
-	// 10. 업데이트 프로세스 시작
+	// 11. 업데이트 프로세스 시작
 	updater.Start()
 }
 
@@ -159,8 +171,7 @@ func getCurrentDir() string {
 }
 
 // runTestMode는 UI 테스트를 위한 모드를 실행합니다
-func runTestMode() {
-
+func runTestMode(i18nManager i18n.LocaleManager) {
 	// 로거 초기화
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
@@ -170,7 +181,7 @@ func runTestMode() {
 		MaxBackups: 5,
 	})
 	if err != nil {
-		fmt.Printf("Failed to initialize logger: %v\n", err)
+		fmt.Printf("로거 초기화 실패: %v\n", err)
 		os.Exit(1)
 	}
 	defer logger.Close()
@@ -186,7 +197,7 @@ func runTestMode() {
 		os.Exit(1)
 	}
 
-	// UI 매니저 초기화 (테스트용 버전 정보 사용)
+	// UI 매니저 초기화
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
@@ -194,6 +205,7 @@ func runTestMode() {
 		FromVersion: testVersionManager.GetFromVersion(),
 		ToVersion:   testVersionManager.GetToVersion(),
 		Theme:       theme.GetCurrentVariant(),
+		I18n:        i18nManager,
 	})
 
 	// UI 실행
