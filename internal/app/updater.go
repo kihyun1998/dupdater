@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	file "github.com/kihyun1998/dupdater/internal/file/domain/ports"
 	"github.com/kihyun1998/dupdater/pkg/utils"
 	"golang.org/x/sys/windows"
 )
@@ -48,7 +49,7 @@ type Config struct {
 	UIManager       UIManager
 	Logger          Logger
 	NetworkManager  NetworkManager
-	FileManager     FileManager
+	FileManager     file.FilePort
 	HashManager     HashManager
 }
 
@@ -303,10 +304,7 @@ type NetworkManager interface {
 
 // FileManager 인터페이스
 type FileManager interface {
-	Backup() error
-	Restore() error
-	ExtractZip(zipFile string) error
-	DeleteFile(path string) error
+	file.FilePort
 }
 
 // HashManager 인터페이스
