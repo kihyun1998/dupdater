@@ -9,7 +9,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	i18n "github.com/kihyun1998/dupdater/internal/i18n/domain/ports"
+	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
 )
 
@@ -22,7 +22,7 @@ type StatusCard struct {
 	progressBar  *widget.ProgressBar
 	subtitleText *canvas.Text
 	currentTheme theme.ThemeVariant
-	i18n         i18n.LocalePort
+	i18n         i18n.LocaleManager
 
 	targetProgress  float64
 	currentProgress float64
@@ -32,7 +32,7 @@ type StatusCard struct {
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
-func NewStatusCard(fromVersion, toVersion string, themeVariant theme.ThemeVariant, i18n i18n.LocalePort) *StatusCard {
+func NewStatusCard(fromVersion, toVersion string, themeVariant theme.ThemeVariant, i18n i18n.LocaleManager) *StatusCard {
 	card := &StatusCard{
 		targetProgress:  0,
 		currentProgress: 0,

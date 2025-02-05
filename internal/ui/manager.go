@@ -4,8 +4,8 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	i18n "github.com/kihyun1998/dupdater/internal/i18n/domain/ports"
-	logger "github.com/kihyun1998/dupdater/internal/logger/domain/ports"
+	"github.com/kihyun1998/dupdater/internal/i18n"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/ui/components"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
 )
@@ -22,8 +22,8 @@ type State struct {
 type Manager struct {
 	app        fyne.App
 	mainWindow fyne.Window
-	logger     logger.LoggerPort
-	i18n       i18n.LocalePort
+	logger     ports.LoggerPort
+	i18n       i18n.LocaleManager
 
 	totalSteps   int
 	currentStep  int
@@ -41,9 +41,9 @@ type Config struct {
 	TotalSteps  int
 	FromVersion string
 	ToVersion   string
-	Logger      logger.LoggerPort
+	Logger      ports.LoggerPort
 	Theme       theme.ThemeVariant
-	I18n        i18n.LocalePort
+	I18n        i18n.LocaleManager
 }
 
 // New는 새로운 Manager 인스턴스를 생성합니다
