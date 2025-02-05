@@ -13,6 +13,12 @@ dupdater/
     │   └── manager.go
     ├── hash/
     │   └── manager.go
+    ├── i18n/
+    │   ├── locale/
+    │   │   ├── en.go
+    │   │   └── ko.go
+    │   ├── manager.go
+    │   └── types.go
     ├── logger/
     │   └── logger.go
     ├── network/
@@ -135,6 +141,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/app"
 	"github.com/kihyun1998/dupdater/internal/file"
 	"github.com/kihyun1998/dupdater/internal/hash"
+	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/internal/ui"
@@ -154,6 +161,7 @@ var (
 	serverName  = flag.String("server", "server1", "서버 프로필 이름")
 	testMode    = flag.Bool("test", false, "UI 테스트 모드")
 	themeMode   = flag.String("theme", "light", "테마 모드 (light/dark)")
+	langMode    = flag.String("lang", "ko", "언어 설정 (ko/en)")
 )
 
 func main() {
@@ -166,9 +174,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 3. i18n 매니저 초기화
+	i18nManager, err := i18n.New(i18n.Config{
+		DefaultLang: *langMode,
+	})
+	if err != nil {
+		fmt.Printf("다국어 지원 초기화 실패: %v\n", err)
+		os.Exit(1)
+	}
+
 	// 테스트 모드 체크
 	if *testMode {
-		runTestMode()
+		runTestMode(i18nManager)
 		return
 	}
 
@@ -179,7 +196,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. 로거 초기화
+	// 4. 로거 초기화
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
 		LogPath:    logPath,
@@ -195,7 +212,7 @@ func main() {
 
 	logger.Info("Starting updater - version: %s, server: %s", *fromVersion, *serverName)
 
-	// 4. 버전 매니저 초기화
+	// 5. 버전 매니저 초기화
 	versionManager, err := version.New(version.Config{
 		Logger:      logger,
 		FromVersion: *fromVersion,
@@ -209,7 +226,7 @@ func main() {
 	// 버전 매니저 초기화 후 로깅
 	logger.Info("업데이트 진행: %s -> %s", versionManager.GetFromVersion(), versionManager.GetToVersion())
 
-	// 5. UI 매니저 초기화
+	// 6. UI 매니저 초기화
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
@@ -217,14 +234,15 @@ func main() {
 		FromVersion: versionManager.GetFromVersion(),
 		ToVersion:   versionManager.GetToVersion(),
 		Theme:       theme.GetCurrentVariant(),
+		I18n:        i18nManager,
 	})
 
-	// 6. 네트워크 매니저 초기화
+	// 7. 네트워크 매니저 초기화
 	networkManager := network.New(network.Config{
 		Logger: logger,
 	})
 
-	// 7. 파일 매니저 초기화
+	// 8. 파일 매니저 초기화
 	fileManager, err := file.New(file.Config{
 		Logger:     logger,
 		BackupDir:  filepath.Join(os.TempDir(), "ACRABACK"),
@@ -236,7 +254,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 8. 해시 매니저 초기화
+	// 9. 해시 매니저 초기화
 	hashManager, err := hash.New(hash.Config{
 		Logger:     logger,
 		CurrentDir: getCurrentDir(),
@@ -247,7 +265,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 9. Updater 생성 및 시작
+	// 10. Updater 생성 및 시작
 	updater := app.New(app.Config{
 		AppName:         TargetAppName,
 		FromVersion:     *fromVersion,
@@ -260,7 +278,7 @@ func main() {
 		HashManager:     hashManager,
 	})
 
-	// 10. 업데이트 프로세스 시작
+	// 11. 업데이트 프로세스 시작
 	updater.Start()
 }
 
@@ -285,8 +303,7 @@ func getCurrentDir() string {
 }
 
 // runTestMode는 UI 테스트를 위한 모드를 실행합니다
-func runTestMode() {
-
+func runTestMode(i18nManager i18n.LocaleManager) {
 	// 로거 초기화
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
@@ -296,7 +313,7 @@ func runTestMode() {
 		MaxBackups: 5,
 	})
 	if err != nil {
-		fmt.Printf("Failed to initialize logger: %v\n", err)
+		fmt.Printf("로거 초기화 실패: %v\n", err)
 		os.Exit(1)
 	}
 	defer logger.Close()
@@ -312,7 +329,7 @@ func runTestMode() {
 		os.Exit(1)
 	}
 
-	// UI 매니저 초기화 (테스트용 버전 정보 사용)
+	// UI 매니저 초기화
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
@@ -320,6 +337,7 @@ func runTestMode() {
 		FromVersion: testVersionManager.GetFromVersion(),
 		ToVersion:   testVersionManager.GetToVersion(),
 		Theme:       theme.GetCurrentVariant(),
+		I18n:        i18nManager,
 	})
 
 	// UI 실행
@@ -605,6 +623,7 @@ func (u *Updater) restoreFiles() error {
 
 func (u *Updater) handleError(message string, err error) error {
 	u.logger.Error("%s: %v", message, err)
+
 	if u.backupCompleted {
 		u.ui.ShowRestoring()
 		if restoreErr := u.restoreFiles(); restoreErr != nil {
@@ -613,10 +632,26 @@ func (u *Updater) handleError(message string, err error) error {
 			return fmt.Errorf("%s 및 복원 실패: %v", message, err)
 		}
 		u.ui.ShowRestoreComplete()
+
+		if _, err := os.Stat(u.fileManager.GetBackupDir()); os.IsNotExist(err) {
+			u.logger.Error("백업 디렉토리는 이미 삭제됨")
+		} else {
+			u.logger.Info("복원 완료 후 백업 디렉토리 유지됨: %s", u.fileManager.GetBackupDir())
+		}
+
 		return fmt.Errorf("%s, 파일이 복원됨: %v", message, err)
 	}
+
 	u.ui.ShowError(fmt.Errorf("%s: %v", message, err))
 	return fmt.Errorf("%s: %v", message, err)
+}
+
+// 복원 완료 후 Updater에서 백업 디렉토리 삭제하도록 변경
+func (u *Updater) finalizeUpdate() {
+	// 업데이트 성공 또는 복원 완료 후 백업 디렉토리 삭제
+	if err := os.RemoveAll(u.fileManager.GetBackupDir()); err != nil {
+		u.logger.Error("백업 디렉토리 삭제 실패: %v", err)
+	}
 }
 
 // Logger는 로깅 작업을 위한 인터페이스입니다
@@ -638,6 +673,7 @@ type FileManager interface {
 	Restore() error
 	ExtractZip(zipFile string) error
 	DeleteFile(path string) error
+	GetBackupDir() string
 }
 
 // HashManager 인터페이스
@@ -790,12 +826,7 @@ func (m *Manager) Restore() error {
 		}
 	}
 
-	// 백업 디렉토리 정리
-	if err := os.RemoveAll(m.backupDir); err != nil {
-		m.logger.Error("백업 디렉토리 삭제 실패: %v", err)
-	}
-
-	m.logger.Info("복원 완료")
+	m.logger.Info("복원 완료: %s", m.backupDir)
 	return nil
 }
 
@@ -828,6 +859,10 @@ func (m *Manager) DeleteFile(path string) error {
 		return fmt.Errorf("파일 삭제 실패: %w", err)
 	}
 	return nil
+}
+
+func (m *Manager) GetBackupDir() string {
+	return m.backupDir
 }
 
 // 내부 헬퍼 함수들
@@ -897,6 +932,19 @@ func (m *Manager) backupDirectory(src, dest string) error {
 
 // 파일 복구 함수
 func (m *Manager) restoreFile(src, dest string) error {
+	// 기존 파일이 존재하면 삭제 시도
+	if _, err := os.Stat(dest); err == nil {
+		if err := os.Remove(dest); err != nil {
+			return fmt.Errorf("기존 파일 삭제 실패: %v", err)
+		}
+	}
+
+	// Rename 시도
+	if err := os.Rename(src, dest); err == nil {
+		return nil
+	}
+
+	// Rename 실패 시 기존 방식으로 복원 진행
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -1257,6 +1305,267 @@ func (m *Manager) compareHashes(hash1, hash2 []byte) bool {
 type Logger interface {
 	Info(format string, v ...interface{})
 	Error(format string, v ...interface{})
+}
+
+```
+## internal/i18n/locale/en.go
+```go
+package locale
+
+// EnglishProvider는 영어 메시지를 제공하는 구조체입니다
+type EnglishProvider struct{}
+
+// GetLanguageCode는 언어 코드를 반환합니다
+func (p *EnglishProvider) GetLanguageCode() string {
+	return "en"
+}
+
+// GetMessages는 영어 메시지 맵을 반환합니다
+func (p *EnglishProvider) GetMessages() map[string]string {
+	return map[string]string{
+		// Update Status Messages
+		"update.status.checking":     "Checking application status...",
+		"update.status.getting_info": "Getting update information...",
+		"update.status.preparing":    "Preparing update files...",
+		"update.status.downloading":  "Downloading update files...",
+		"update.status.verifying":    "Verifying update files...",
+		"update.status.installing":   "Installing update...",
+		"update.status.finalizing":   "Finalizing installation...",
+		"update.status.completed":    "Update completed.",
+
+		// Titles and Headers
+		"update.title":             "Update",
+		"update.header.new_update": "New Update Available",
+		"update.header.version":    "Version",
+
+		// Progress Status
+		"update.progress.downloading": "Downloading...",
+		"update.progress.percentage":  "%d%%",
+
+		// Error Messages
+		"update.error.generic":      "An error occurred during update",
+		"update.error.connection":   "Failed to connect to server",
+		"update.error.download":     "Failed to download file",
+		"update.error.verification": "File verification failed",
+
+		// Restoration Related
+		"update.restore.in_progress": "Restoring previous version...",
+		"update.restore.completed":   "Restoration completed",
+
+		// Others
+		"update.info.restart":    "The application will restart automatically after update.",
+		"update.button.minimize": "Minimize",
+		"update.button.close":    "Close",
+	}
+}
+
+```
+## internal/i18n/locale/ko.go
+```go
+package locale
+
+// KoreanProvider는 한국어 메시지를 제공하는 구조체입니다
+type KoreanProvider struct{}
+
+// GetLanguageCode는 언어 코드를 반환합니다
+func (p *KoreanProvider) GetLanguageCode() string {
+	return "ko"
+}
+
+// GetMessages는 한국어 메시지 맵을 반환합니다
+func (p *KoreanProvider) GetMessages() map[string]string {
+	return map[string]string{
+		// 업데이트 상태 메시지
+		"update.status.checking":     "앱 상태를 확인하고 있습니다...",
+		"update.status.getting_info": "업데이트 정보를 확인하고 있습니다...",
+		"update.status.preparing":    "업데이트 파일을 준비하고 있습니다...",
+		"update.status.downloading":  "업데이트 파일을 다운로드하고 있습니다...",
+		"update.status.verifying":    "업데이트 파일을 검증하고 있습니다...",
+		"update.status.installing":   "업데이트를 설치하고 있습니다...",
+		"update.status.finalizing":   "설치를 확인하고 있습니다...",
+		"update.status.completed":    "업데이트가 완료되었습니다.",
+
+		// 타이틀 및 헤더
+		"update.title":             "업데이트",
+		"update.header.new_update": "새로운 업데이트가 있습니다",
+		"update.header.version":    "버전",
+
+		// 진행 상태
+		"update.progress.downloading": "다운로드 중...",
+		"update.progress.percentage":  "%d%%",
+
+		// 에러 메시지
+		"update.error.generic":      "업데이트 중 오류가 발생했습니다",
+		"update.error.connection":   "서버 연결에 실패했습니다",
+		"update.error.download":     "파일 다운로드에 실패했습니다",
+		"update.error.verification": "파일 검증에 실패했습니다",
+
+		// 복원 관련
+		"update.restore.in_progress": "이전 버전으로 복원 중...",
+		"update.restore.completed":   "복원이 완료되었습니다",
+
+		// 기타
+		"update.info.restart":    "업데이트가 완료되면 자동으로 앱이 다시 시작됩니다.",
+		"update.button.minimize": "최소화",
+		"update.button.close":    "닫기",
+	}
+}
+
+```
+## internal/i18n/manager.go
+```go
+package i18n
+
+import (
+	"fmt"
+	"sync"
+
+	"github.com/kihyun1998/dupdater/internal/i18n/locale"
+)
+
+// Manager는 다국어 지원을 관리하는 구조체입니다
+type Manager struct {
+	currentLang string
+	messages    map[string]map[string]string
+	mutex       sync.RWMutex
+	providers   map[string]MessageProvider
+}
+
+// Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
+type Config struct {
+	DefaultLang string
+}
+
+// New는 새로운 Manager 인스턴스를 생성합니다
+func New(config Config) (*Manager, error) {
+	if config.DefaultLang == "" {
+		config.DefaultLang = string(DefaultLanguage)
+	}
+
+	m := &Manager{
+		messages:  make(map[string]map[string]string),
+		providers: make(map[string]MessageProvider),
+	}
+
+	// 기본 제공자 등록
+	m.RegisterProvider(&locale.KoreanProvider{})
+	m.RegisterProvider(&locale.EnglishProvider{})
+
+	// 기본 언어 설정
+	if err := m.SetLanguage(config.DefaultLang); err != nil {
+		return nil, err
+	}
+
+	return m, nil
+}
+
+// RegisterProvider는 새로운 메시지 제공자를 등록합니다
+func (m *Manager) RegisterProvider(provider MessageProvider) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	langCode := provider.GetLanguageCode()
+	m.providers[langCode] = provider
+	m.messages[langCode] = provider.GetMessages()
+}
+
+// SetLanguage는 현재 언어를 설정합니다
+func (m *Manager) SetLanguage(lang string) error {
+	if !IsValidLanguage(lang) {
+		return fmt.Errorf("지원하지 않는 언어입니다: %s", lang)
+	}
+
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	if _, exists := m.messages[lang]; !exists {
+		return fmt.Errorf("언어 리소스를 찾을 수 없습니다: %s", lang)
+	}
+
+	m.currentLang = lang
+	return nil
+}
+
+// GetMessage는 지정된 키에 해당하는 메시지를 현재 설정된 언어로 반환합니다
+func (m *Manager) GetMessage(key string) string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	if messages, exists := m.messages[m.currentLang]; exists {
+		if msg, ok := messages[key]; ok {
+			return msg
+		}
+	}
+
+	// 메시지를 찾을 수 없는 경우 키를 반환
+	return key
+}
+
+// GetCurrentLanguage는 현재 설정된 언어를 반환합니다
+func (m *Manager) GetCurrentLanguage() string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	return m.currentLang
+}
+
+// formatMessage는 메시지에 인자를 적용합니다
+func (m *Manager) formatMessage(message string, args ...interface{}) string {
+	if len(args) > 0 {
+		return fmt.Sprintf(message, args...)
+	}
+	return message
+}
+
+```
+## internal/i18n/types.go
+```go
+// Package i18n은 다국어 지원을 위한 패키지입니다
+package i18n
+
+// LocaleManager는 다국어 지원을 위한 인터페이스입니다
+type LocaleManager interface {
+	// SetLanguage는 현재 언어를 설정합니다
+	SetLanguage(lang string) error
+
+	// GetMessage는 지정된 키에 해당하는 메시지를 현재 설정된 언어로 반환합니다
+	GetMessage(key string) string
+
+	// GetCurrentLanguage는 현재 설정된 언어를 반환합니다
+	GetCurrentLanguage() string
+}
+
+// MessageProvider는 각 언어별 메시지를 제공하는 인터페이스입니다
+type MessageProvider interface {
+	// GetMessages는 해당 언어의 모든 메시지를 반환합니다
+	GetMessages() map[string]string
+
+	// GetLanguageCode는 해당 언어의 코드를 반환합니다 (예: "ko", "en")
+	GetLanguageCode() string
+}
+
+// Language는 지원되는 언어 코드를 정의합니다
+type Language string
+
+const (
+	// Korean 한국어
+	Korean Language = "ko"
+
+	// English 영어
+	English Language = "en"
+
+	// DefaultLanguage 기본 언어
+	DefaultLanguage = Korean
+)
+
+// IsValidLanguage는 주어진 언어 코드가 유효한지 검사합니다
+func IsValidLanguage(lang string) bool {
+	switch Language(lang) {
+	case Korean, English:
+		return true
+	default:
+		return false
+	}
 }
 
 ```
@@ -1717,6 +2026,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
 )
 
@@ -1729,6 +2039,7 @@ type StatusCard struct {
 	progressBar  *widget.ProgressBar
 	subtitleText *canvas.Text
 	currentTheme theme.ThemeVariant
+	i18n         i18n.LocaleManager
 
 	targetProgress  float64
 	currentProgress float64
@@ -1738,12 +2049,13 @@ type StatusCard struct {
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
-func NewStatusCard(fromVersion, toVersion string, themeVariant theme.ThemeVariant) *StatusCard {
+func NewStatusCard(fromVersion, toVersion string, themeVariant theme.ThemeVariant, i18n i18n.LocaleManager) *StatusCard {
 	card := &StatusCard{
 		targetProgress:  0,
 		currentProgress: 0,
 		animating:       false,
 		currentTheme:    themeVariant,
+		i18n:            i18n,
 	}
 	card.ExtendBaseWidget(card)
 	card.setupUI(fromVersion, toVersion)
@@ -1757,13 +2069,17 @@ func (s *StatusCard) CreateRenderer() fyne.WidgetRenderer {
 
 // setupUI는 UI 컴포넌트를 초기화합니다
 func (s *StatusCard) setupUI(fromVersion, toVersion string) {
-	// 타이틀
-	s.titleText = canvas.NewText("새로운 업데이트가 있습니다", s.currentTheme.TextColor())
+	// 타이틀 텍스트
+	s.titleText = canvas.NewText(
+		s.i18n.GetMessage("update.header.new_update"),
+		s.currentTheme.TextColor(),
+	)
 	s.titleText.TextSize = s.currentTheme.FontSizeLarge()
 	s.titleText.TextStyle = fyne.TextStyle{Bold: true}
 
 	// 버전 정보
-	s.versionText = canvas.NewText(fmt.Sprintf("%s → %s", fromVersion, toVersion), s.currentTheme.SubTextColor())
+	versionFormat := fmt.Sprintf("%s → %s", fromVersion, toVersion)
+	s.versionText = canvas.NewText(versionFormat, s.currentTheme.SubTextColor())
 	s.versionText.TextSize = s.currentTheme.FontSizeMedium()
 
 	// 진행 바
@@ -1771,7 +2087,10 @@ func (s *StatusCard) setupUI(fromVersion, toVersion string) {
 	s.progressBar.Resize(fyne.NewSize(350, 20))
 
 	// 상태 메시지
-	s.subtitleText = canvas.NewText("업데이트가 완료되면 자동으로 앱이 다시 시작됩니다.", s.currentTheme.SubTextColor())
+	s.subtitleText = canvas.NewText(
+		s.i18n.GetMessage("update.info.restart"),
+		s.currentTheme.SubTextColor(),
+	)
 	s.subtitleText.TextSize = s.currentTheme.FontSizeSmall()
 
 	// 레이아웃 구성
@@ -1787,7 +2106,7 @@ func (s *StatusCard) setupUI(fromVersion, toVersion string) {
 
 // SetError는 에러 상태를 표시합니다
 func (s *StatusCard) SetError(errMsg string) {
-	s.titleText.Text = "업데이트 중 오류가 발생했습니다"
+	s.titleText.Text = s.i18n.GetMessage("update.error.generic")
 	s.titleText.Color = s.currentTheme.ErrorColor()
 	s.subtitleText.Text = errMsg
 	s.subtitleText.Color = s.currentTheme.ErrorColor()
@@ -1797,7 +2116,7 @@ func (s *StatusCard) SetError(errMsg string) {
 
 // SetRestoring는 복원 진행 상태를 표시합니다
 func (s *StatusCard) SetRestoring(msg string) {
-	s.titleText.Text = "이전 버전으로 복원 중"
+	s.titleText.Text = s.i18n.GetMessage("update.restore.in_progress")
 	s.titleText.Color = s.currentTheme.WarningColor()
 	s.subtitleText.Text = msg
 	s.subtitleText.Color = s.currentTheme.WarningColor()
@@ -1807,9 +2126,9 @@ func (s *StatusCard) SetRestoring(msg string) {
 
 // SetRestoreComplete는 복원 완료 상태를 표시합니다
 func (s *StatusCard) SetRestoreComplete() {
-	s.titleText.Text = "복원이 완료되었습니다"
+	s.titleText.Text = s.i18n.GetMessage("update.restore.completed")
 	s.titleText.Color = s.currentTheme.SuccessColor()
-	s.subtitleText.Text = "앱이 곧 다시 시작됩니다"
+	s.subtitleText.Text = s.i18n.GetMessage("update.info.restart")
 	s.subtitleText.Color = s.currentTheme.SuccessColor()
 	s.progressBar.Hide()
 	s.Refresh()
@@ -1817,7 +2136,6 @@ func (s *StatusCard) SetRestoreComplete() {
 
 // UpdateStatus는 상태와 진행률을 업데이트합니다
 func (s *StatusCard) UpdateStatus(progress float64, message string) {
-	s.titleText.Text = "업데이트 진행 중"
 	s.titleText.Color = s.currentTheme.TextColor()
 	s.subtitleText.Text = message
 	s.subtitleText.Color = s.currentTheme.SubTextColor()
@@ -1896,11 +2214,10 @@ func (s *StatusCard) animateProgress() {
 package ui
 
 import (
-	"fmt"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/ui/components"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
@@ -1916,9 +2233,11 @@ type State struct {
 
 // Manager는 UI를 관리하는 구조체입니다
 type Manager struct {
-	app          fyne.App
-	mainWindow   fyne.Window
-	logger       *logger.Logger
+	app        fyne.App
+	mainWindow fyne.Window
+	logger     *logger.Logger
+	i18n       i18n.LocaleManager
+
 	totalSteps   int
 	currentStep  int
 	currentTheme theme.ThemeVariant
@@ -1937,6 +2256,7 @@ type Config struct {
 	ToVersion   string
 	Logger      *logger.Logger
 	Theme       theme.ThemeVariant
+	I18n        i18n.LocaleManager
 }
 
 // New는 새로운 Manager 인스턴스를 생성합니다
@@ -1949,6 +2269,7 @@ func New(config Config) *Manager {
 	manager := &Manager{
 		app:               fyneApp,
 		logger:            config.Logger,
+		i18n:              config.I18n,
 		totalSteps:        config.TotalSteps,
 		currentStep:       0,
 		animationComplete: false,
@@ -1956,7 +2277,9 @@ func New(config Config) *Manager {
 	}
 
 	// 메인 윈도우 생성
-	manager.mainWindow = manager.app.NewWindow(fmt.Sprintf("%s Updater", config.AppName))
+	manager.mainWindow = manager.app.NewWindow(
+		manager.i18n.GetMessage("update.title"),
+	)
 	manager.initializeUI(config)
 
 	return manager
@@ -1965,7 +2288,12 @@ func New(config Config) *Manager {
 // initializeUI는 UI 컴포넌트들을 초기화하고 배치합니다
 func (m *Manager) initializeUI(config Config) {
 	// StatusCard 생성 시 테마 전달
-	m.statusCard = components.NewStatusCard(config.FromVersion, config.ToVersion, m.currentTheme)
+	m.statusCard = components.NewStatusCard(
+		config.FromVersion,
+		config.ToVersion,
+		m.currentTheme,
+		m.i18n,
+	)
 
 	// 이미 설정된 completion callback이 있다면 설정
 	if m.completionCallback != nil {
@@ -1990,32 +2318,64 @@ func (m *Manager) initializeUI(config Config) {
 // SetCurrentStep은 현재 진행 단계를 업데이트합니다
 func (m *Manager) SetCurrentStep(step int) {
 	// step에 따른 적절한 메시지 설정
-	messages := map[int]string{
-		0: "앱 상태를 확인하고 있습니다...",
-		1: "업데이트 정보를 확인하고 있습니다...",
-		2: "업데이트 파일을 준비하고 있습니다...",
-		3: "업데이트 파일을 다운로드하고 있습니다...",
-		4: "업데이트 파일을 검증하고 있습니다...",
-		5: "업데이트를 설치하고 있습니다...",
-		6: "설치를 확인하고 있습니다...",
-		7: "업데이트가 완료되었습니다.",
+	messageKeys := map[int]string{
+		0: "update.status.checking",
+		1: "update.status.getting_info",
+		2: "update.status.preparing",
+		3: "update.status.downloading",
+		4: "update.status.verifying",
+		5: "update.status.installing",
+		6: "update.status.finalizing",
+		7: "update.status.completed",
 	}
-	if msg, ok := messages[step]; ok {
+	if msgKey, ok := messageKeys[step]; ok {
 		var progress float64
 		if step == m.totalSteps-1 {
-			// 마지막 단계에서는 100%로 설정
 			progress = 1.0
 		} else {
-			// 그 외의 경우 진행률 계산
 			progress = float64(step) / float64(m.totalSteps-1)
 		}
 
 		m.logger.Info("업데이트 진행률: %.2f%%, 단계: %d/%d", progress*100, step, m.totalSteps-1)
-		m.statusCard.UpdateStatus(progress, msg)
+		m.statusCard.UpdateStatus(progress, m.i18n.GetMessage(msgKey))
 	}
 }
 
-// GetTotalSteps은 전체 단계 수를 반환합니다
+// UpdateDetail은 상세 메시지를 업데이트합니다
+func (m *Manager) UpdateDetail(message string) {
+	m.statusCard.UpdateStatus(-1, message)
+}
+
+// ShowError는 에러 메시지를 표시합니다
+func (m *Manager) ShowError(err error) {
+	m.statusCard.SetError(err.Error())
+	if m.onRestore != nil {
+		m.ShowRestoring()
+		go m.onRestore()
+	}
+}
+
+// ShowProgress는 다운로드 진행률을 표시합니다
+func (m *Manager) ShowProgress(current, total int64) {
+	m.statusCard.SetProgress(current, total)
+}
+
+// ShowRestoring은 복원 진행 중임을 표시합니다
+func (m *Manager) ShowRestoring() {
+	m.statusCard.SetRestoring(m.i18n.GetMessage("update.restore.in_progress"))
+}
+
+// ShowRestoreComplete는 복원 완료를 표시합니다
+func (m *Manager) ShowRestoreComplete() {
+	m.statusCard.SetRestoreComplete()
+}
+
+// SetRestoreHandler는 복구 핸들러를 설정합니다
+func (m *Manager) SetRestoreHandler(handler func()) {
+	m.onRestore = handler
+}
+
+// GetTotalSteps는 전체 단계 수를 반환합니다
 func (m *Manager) GetTotalSteps() int {
 	return m.totalSteps
 }
@@ -2031,42 +2391,6 @@ func (m *Manager) SetCompletionCallback(callback func()) {
 			}
 		})
 	}
-}
-
-// UpdateDetail은 상세 메시지를 업데이트합니다
-func (m *Manager) UpdateDetail(message string) {
-	m.statusCard.UpdateStatus(-1, message) // -1은 진행률 변경 없음을 의미
-}
-
-// ShowError는 에러 메시지를 표시합니다
-func (m *Manager) ShowError(err error) {
-	m.statusCard.SetError(err.Error())
-
-	// 복구 가능한 경우 복구 UI 표시
-	if m.onRestore != nil {
-		m.ShowRestoring()
-		go m.onRestore()
-	}
-}
-
-// ShowProgress는 다운로드 진행률을 표시합니다
-func (m *Manager) ShowProgress(current, total int64) {
-	m.statusCard.SetProgress(current, total)
-}
-
-// ShowRestoring은 복원 진행 중임을 표시합니다
-func (m *Manager) ShowRestoring() {
-	m.statusCard.SetRestoring("이전 버전으로 복원중...")
-}
-
-// ShowRestoreComplete는 복원 완료를 표시합니다
-func (m *Manager) ShowRestoreComplete() {
-	m.statusCard.SetRestoreComplete()
-}
-
-// SetRestoreHandler는 복구 핸들러를 설정합니다
-func (m *Manager) SetRestoreHandler(handler func()) {
-	m.onRestore = handler
 }
 
 // Run은 UI를 실행합니다

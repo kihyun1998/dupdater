@@ -274,6 +274,7 @@ func (u *Updater) restoreFiles() error {
 
 func (u *Updater) handleError(message string, err error) error {
 	u.logger.Error("%s: %v", message, err)
+
 	if u.backupCompleted {
 		u.ui.ShowRestoring()
 		if restoreErr := u.restoreFiles(); restoreErr != nil {
@@ -282,10 +283,26 @@ func (u *Updater) handleError(message string, err error) error {
 			return fmt.Errorf("%s 및 복원 실패: %v", message, err)
 		}
 		u.ui.ShowRestoreComplete()
+
+		if _, err := os.Stat(u.fileManager.GetBackupDir()); os.IsNotExist(err) {
+			u.logger.Error("백업 디렉토리는 이미 삭제됨")
+		} else {
+			u.logger.Info("복원 완료 후 백업 디렉토리 유지됨: %s", u.fileManager.GetBackupDir())
+		}
+
 		return fmt.Errorf("%s, 파일이 복원됨: %v", message, err)
 	}
+
 	u.ui.ShowError(fmt.Errorf("%s: %v", message, err))
 	return fmt.Errorf("%s: %v", message, err)
+}
+
+// 복원 완료 후 Updater에서 백업 디렉토리 삭제하도록 변경
+func (u *Updater) finalizeUpdate() {
+	// 업데이트 성공 또는 복원 완료 후 백업 디렉토리 삭제
+	if err := os.RemoveAll(u.fileManager.GetBackupDir()); err != nil {
+		u.logger.Error("백업 디렉토리 삭제 실패: %v", err)
+	}
 }
 
 // Logger는 로깅 작업을 위한 인터페이스입니다
@@ -307,6 +324,7 @@ type FileManager interface {
 	Restore() error
 	ExtractZip(zipFile string) error
 	DeleteFile(path string) error
+	GetBackupDir() string
 }
 
 // HashManager 인터페이스

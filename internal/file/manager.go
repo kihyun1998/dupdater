@@ -124,12 +124,7 @@ func (m *Manager) Restore() error {
 		}
 	}
 
-	// 백업 디렉토리 정리
-	if err := os.RemoveAll(m.backupDir); err != nil {
-		m.logger.Error("백업 디렉토리 삭제 실패: %v", err)
-	}
-
-	m.logger.Info("복원 완료")
+	m.logger.Info("복원 완료: %s", m.backupDir)
 	return nil
 }
 
@@ -162,6 +157,10 @@ func (m *Manager) DeleteFile(path string) error {
 		return fmt.Errorf("파일 삭제 실패: %w", err)
 	}
 	return nil
+}
+
+func (m *Manager) GetBackupDir() string {
+	return m.backupDir
 }
 
 // 내부 헬퍼 함수들
@@ -231,6 +230,19 @@ func (m *Manager) backupDirectory(src, dest string) error {
 
 // 파일 복구 함수
 func (m *Manager) restoreFile(src, dest string) error {
+	// 기존 파일이 존재하면 삭제 시도
+	if _, err := os.Stat(dest); err == nil {
+		if err := os.Remove(dest); err != nil {
+			return fmt.Errorf("기존 파일 삭제 실패: %v", err)
+		}
+	}
+
+	// Rename 시도
+	if err := os.Rename(src, dest); err == nil {
+		return nil
+	}
+
+	// Rename 실패 시 기존 방식으로 복원 진행
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
