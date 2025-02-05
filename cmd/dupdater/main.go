@@ -8,7 +8,6 @@ import (
 
 	"github.com/kihyun1998/dupdater/internal/app"
 	"github.com/kihyun1998/dupdater/internal/file"
-	fileConfig "github.com/kihyun1998/dupdater/internal/file/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/hash"
 	"github.com/kihyun1998/dupdater/internal/i18n"
 	locale "github.com/kihyun1998/dupdater/internal/i18n/domain/ports"
@@ -114,7 +113,7 @@ func main() {
 	})
 
 	// 8. 파일 매니저 초기화
-	fileManager, err := file.New(fileConfig.FileConfig{
+	fileManager, err := file.New(file.Config{
 		Logger:     logger,
 		BackupDir:  filepath.Join(os.TempDir(), "ACRABACK"),
 		CurrentDir: getCurrentDir(),
