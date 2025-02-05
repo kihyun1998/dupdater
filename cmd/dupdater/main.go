@@ -11,7 +11,6 @@ import (
 	"github.com/kihyun1998/dupdater/internal/hash"
 	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/logger"
-	loglevel "github.com/kihyun1998/dupdater/internal/logger/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/internal/ui"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
@@ -69,7 +68,7 @@ func main() {
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
 		LogPath:    logPath,
-		LogLevel:   loglevel.INFO,
+		LogLevel:   logger.INFO,
 		MaxSize:    10 * 1024 * 1024, // 10MB
 		MaxBackups: 5,
 	})
@@ -177,7 +176,7 @@ func runTestMode(i18nManager i18n.LocaleManager) {
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
 		LogPath:    logPath,
-		LogLevel:   loglevel.INFO,
+		LogLevel:   logger.INFO,
 		MaxSize:    10 * 1024 * 1024,
 		MaxBackups: 5,
 	})
