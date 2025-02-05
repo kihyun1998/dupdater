@@ -13,7 +13,26 @@ dupdater/
     │   └── manager.go
     ├── hash/
     │   └── manager.go
+    ├── i18n/
+    │   ├── locale/
+    │   │   ├── en.go
+    │   │   └── ko.go
+    │   ├── manager.go
+    │   └── types.go
     ├── logger/
+    │   ├── domain/
+    │   │   ├── entity/
+    │   │   │   ├── log_entry.go
+    │   │   │   └── log_level.go
+    │   │   ├── ports/
+    │   │   │   └── logger_port.go
+    │   │   ├── repository/
+    │   │   │   └── log_repository.go
+    │   │   └── usecase/
+    │   │   │   └── logger_service.go
+    │   ├── infrastructure/
+    │   │   └── file_logger.go
+    │   ├── factory.go
     │   └── logger.go
     ├── network/
     │   └── manager.go
@@ -135,7 +154,9 @@ import (
 	"github.com/kihyun1998/dupdater/internal/app"
 	"github.com/kihyun1998/dupdater/internal/file"
 	"github.com/kihyun1998/dupdater/internal/hash"
+	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/logger"
+	loglevel "github.com/kihyun1998/dupdater/internal/logger/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/internal/ui"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
@@ -154,6 +175,7 @@ var (
 	serverName  = flag.String("server", "server1", "서버 프로필 이름")
 	testMode    = flag.Bool("test", false, "UI 테스트 모드")
 	themeMode   = flag.String("theme", "light", "테마 모드 (light/dark)")
+	langMode    = flag.String("lang", "ko", "언어 설정 (ko/en)")
 )
 
 func main() {
@@ -166,9 +188,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 3. i18n 매니저 초기화
+	i18nManager, err := i18n.New(i18n.Config{
+		DefaultLang: *langMode,
+	})
+	if err != nil {
+		fmt.Printf("다국어 지원 초기화 실패: %v\n", err)
+		os.Exit(1)
+	}
+
 	// 테스트 모드 체크
 	if *testMode {
-		runTestMode()
+		runTestMode(i18nManager)
 		return
 	}
 
@@ -179,11 +210,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 3. 로거 초기화
+	// 4. 로거 초기화
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
 		LogPath:    logPath,
-		LogLevel:   logger.INFO,
+		LogLevel:   loglevel.INFO,
 		MaxSize:    10 * 1024 * 1024, // 10MB
 		MaxBackups: 5,
 	})
@@ -195,7 +226,7 @@ func main() {
 
 	logger.Info("Starting updater - version: %s, server: %s", *fromVersion, *serverName)
 
-	// 4. 버전 매니저 초기화
+	// 5. 버전 매니저 초기화
 	versionManager, err := version.New(version.Config{
 		Logger:      logger,
 		FromVersion: *fromVersion,
@@ -209,7 +240,7 @@ func main() {
 	// 버전 매니저 초기화 후 로깅
 	logger.Info("업데이트 진행: %s -> %s", versionManager.GetFromVersion(), versionManager.GetToVersion())
 
-	// 5. UI 매니저 초기화
+	// 6. UI 매니저 초기화
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
@@ -217,14 +248,15 @@ func main() {
 		FromVersion: versionManager.GetFromVersion(),
 		ToVersion:   versionManager.GetToVersion(),
 		Theme:       theme.GetCurrentVariant(),
+		I18n:        i18nManager,
 	})
 
-	// 6. 네트워크 매니저 초기화
+	// 7. 네트워크 매니저 초기화
 	networkManager := network.New(network.Config{
 		Logger: logger,
 	})
 
-	// 7. 파일 매니저 초기화
+	// 8. 파일 매니저 초기화
 	fileManager, err := file.New(file.Config{
 		Logger:     logger,
 		BackupDir:  filepath.Join(os.TempDir(), "ACRABACK"),
@@ -236,7 +268,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 8. 해시 매니저 초기화
+	// 9. 해시 매니저 초기화
 	hashManager, err := hash.New(hash.Config{
 		Logger:     logger,
 		CurrentDir: getCurrentDir(),
@@ -247,7 +279,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 9. Updater 생성 및 시작
+	// 10. Updater 생성 및 시작
 	updater := app.New(app.Config{
 		AppName:         TargetAppName,
 		FromVersion:     *fromVersion,
@@ -260,7 +292,7 @@ func main() {
 		HashManager:     hashManager,
 	})
 
-	// 10. 업데이트 프로세스 시작
+	// 11. 업데이트 프로세스 시작
 	updater.Start()
 }
 
@@ -285,18 +317,17 @@ func getCurrentDir() string {
 }
 
 // runTestMode는 UI 테스트를 위한 모드를 실행합니다
-func runTestMode() {
-
+func runTestMode(i18nManager i18n.LocaleManager) {
 	// 로거 초기화
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
 		LogPath:    logPath,
-		LogLevel:   logger.INFO,
+		LogLevel:   loglevel.INFO,
 		MaxSize:    10 * 1024 * 1024,
 		MaxBackups: 5,
 	})
 	if err != nil {
-		fmt.Printf("Failed to initialize logger: %v\n", err)
+		fmt.Printf("로거 초기화 실패: %v\n", err)
 		os.Exit(1)
 	}
 	defer logger.Close()
@@ -312,7 +343,7 @@ func runTestMode() {
 		os.Exit(1)
 	}
 
-	// UI 매니저 초기화 (테스트용 버전 정보 사용)
+	// UI 매니저 초기화
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
@@ -320,6 +351,7 @@ func runTestMode() {
 		FromVersion: testVersionManager.GetFromVersion(),
 		ToVersion:   testVersionManager.GetToVersion(),
 		Theme:       theme.GetCurrentVariant(),
+		I18n:        i18nManager,
 	})
 
 	// UI 실행
@@ -1260,80 +1292,613 @@ type Logger interface {
 }
 
 ```
-## internal/logger/logger.go
+## internal/i18n/locale/en.go
 ```go
-package logger
+package locale
+
+// EnglishProvider는 영어 메시지를 제공하는 구조체입니다
+type EnglishProvider struct{}
+
+// GetLanguageCode는 언어 코드를 반환합니다
+func (p *EnglishProvider) GetLanguageCode() string {
+	return "en"
+}
+
+// GetMessages는 영어 메시지 맵을 반환합니다
+func (p *EnglishProvider) GetMessages() map[string]string {
+	return map[string]string{
+		// Update Status Messages
+		"update.status.checking":     "Checking application status...",
+		"update.status.getting_info": "Getting update information...",
+		"update.status.preparing":    "Preparing update files...",
+		"update.status.downloading":  "Downloading update files...",
+		"update.status.verifying":    "Verifying update files...",
+		"update.status.installing":   "Installing update...",
+		"update.status.finalizing":   "Finalizing installation...",
+		"update.status.completed":    "Update completed.",
+
+		// Titles and Headers
+		"update.title":             "Update",
+		"update.header.new_update": "New Update Available",
+		"update.header.version":    "Version",
+
+		// Progress Status
+		"update.progress.downloading": "Downloading...",
+		"update.progress.percentage":  "%d%%",
+
+		// Error Messages
+		"update.error.generic":      "An error occurred during update",
+		"update.error.connection":   "Failed to connect to server",
+		"update.error.download":     "Failed to download file",
+		"update.error.verification": "File verification failed",
+
+		// Restoration Related
+		"update.restore.in_progress": "Restoring previous version...",
+		"update.restore.completed":   "Restoration completed",
+
+		// Others
+		"update.info.restart":    "The application will restart automatically after update.",
+		"update.button.minimize": "Minimize",
+		"update.button.close":    "Close",
+	}
+}
+
+```
+## internal/i18n/locale/ko.go
+```go
+package locale
+
+// KoreanProvider는 한국어 메시지를 제공하는 구조체입니다
+type KoreanProvider struct{}
+
+// GetLanguageCode는 언어 코드를 반환합니다
+func (p *KoreanProvider) GetLanguageCode() string {
+	return "ko"
+}
+
+// GetMessages는 한국어 메시지 맵을 반환합니다
+func (p *KoreanProvider) GetMessages() map[string]string {
+	return map[string]string{
+		// 업데이트 상태 메시지
+		"update.status.checking":     "앱 상태를 확인하고 있습니다...",
+		"update.status.getting_info": "업데이트 정보를 확인하고 있습니다...",
+		"update.status.preparing":    "업데이트 파일을 준비하고 있습니다...",
+		"update.status.downloading":  "업데이트 파일을 다운로드하고 있습니다...",
+		"update.status.verifying":    "업데이트 파일을 검증하고 있습니다...",
+		"update.status.installing":   "업데이트를 설치하고 있습니다...",
+		"update.status.finalizing":   "설치를 확인하고 있습니다...",
+		"update.status.completed":    "업데이트가 완료되었습니다.",
+
+		// 타이틀 및 헤더
+		"update.title":             "업데이트",
+		"update.header.new_update": "새로운 업데이트가 있습니다",
+		"update.header.version":    "버전",
+
+		// 진행 상태
+		"update.progress.downloading": "다운로드 중...",
+		"update.progress.percentage":  "%d%%",
+
+		// 에러 메시지
+		"update.error.generic":      "업데이트 중 오류가 발생했습니다",
+		"update.error.connection":   "서버 연결에 실패했습니다",
+		"update.error.download":     "파일 다운로드에 실패했습니다",
+		"update.error.verification": "파일 검증에 실패했습니다",
+
+		// 복원 관련
+		"update.restore.in_progress": "이전 버전으로 복원 중...",
+		"update.restore.completed":   "복원이 완료되었습니다",
+
+		// 기타
+		"update.info.restart":    "업데이트가 완료되면 자동으로 앱이 다시 시작됩니다.",
+		"update.button.minimize": "최소화",
+		"update.button.close":    "닫기",
+	}
+}
+
+```
+## internal/i18n/manager.go
+```go
+package i18n
 
 import (
 	"fmt"
-	"log"
-	"os"
-	"path/filepath"
-	"runtime"
 	"sync"
+
+	"github.com/kihyun1998/dupdater/internal/i18n/locale"
+)
+
+// Manager는 다국어 지원을 관리하는 구조체입니다
+type Manager struct {
+	currentLang string
+	messages    map[string]map[string]string
+	mutex       sync.RWMutex
+	providers   map[string]MessageProvider
+}
+
+// Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
+type Config struct {
+	DefaultLang string
+}
+
+// New는 새로운 Manager 인스턴스를 생성합니다
+func New(config Config) (*Manager, error) {
+	if config.DefaultLang == "" {
+		config.DefaultLang = string(DefaultLanguage)
+	}
+
+	m := &Manager{
+		messages:  make(map[string]map[string]string),
+		providers: make(map[string]MessageProvider),
+	}
+
+	// 기본 제공자 등록
+	m.RegisterProvider(&locale.KoreanProvider{})
+	m.RegisterProvider(&locale.EnglishProvider{})
+
+	// 기본 언어 설정
+	if err := m.SetLanguage(config.DefaultLang); err != nil {
+		return nil, err
+	}
+
+	return m, nil
+}
+
+// RegisterProvider는 새로운 메시지 제공자를 등록합니다
+func (m *Manager) RegisterProvider(provider MessageProvider) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	langCode := provider.GetLanguageCode()
+	m.providers[langCode] = provider
+	m.messages[langCode] = provider.GetMessages()
+}
+
+// SetLanguage는 현재 언어를 설정합니다
+func (m *Manager) SetLanguage(lang string) error {
+	if !IsValidLanguage(lang) {
+		return fmt.Errorf("지원하지 않는 언어입니다: %s", lang)
+	}
+
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	if _, exists := m.messages[lang]; !exists {
+		return fmt.Errorf("언어 리소스를 찾을 수 없습니다: %s", lang)
+	}
+
+	m.currentLang = lang
+	return nil
+}
+
+// GetMessage는 지정된 키에 해당하는 메시지를 현재 설정된 언어로 반환합니다
+func (m *Manager) GetMessage(key string) string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	if messages, exists := m.messages[m.currentLang]; exists {
+		if msg, ok := messages[key]; ok {
+			return msg
+		}
+	}
+
+	// 메시지를 찾을 수 없는 경우 키를 반환
+	return key
+}
+
+// GetCurrentLanguage는 현재 설정된 언어를 반환합니다
+func (m *Manager) GetCurrentLanguage() string {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	return m.currentLang
+}
+
+// formatMessage는 메시지에 인자를 적용합니다
+func (m *Manager) formatMessage(message string, args ...interface{}) string {
+	if len(args) > 0 {
+		return fmt.Sprintf(message, args...)
+	}
+	return message
+}
+
+```
+## internal/i18n/types.go
+```go
+// Package i18n은 다국어 지원을 위한 패키지입니다
+package i18n
+
+// LocaleManager는 다국어 지원을 위한 인터페이스입니다
+type LocaleManager interface {
+	// SetLanguage는 현재 언어를 설정합니다
+	SetLanguage(lang string) error
+
+	// GetMessage는 지정된 키에 해당하는 메시지를 현재 설정된 언어로 반환합니다
+	GetMessage(key string) string
+
+	// GetCurrentLanguage는 현재 설정된 언어를 반환합니다
+	GetCurrentLanguage() string
+}
+
+// MessageProvider는 각 언어별 메시지를 제공하는 인터페이스입니다
+type MessageProvider interface {
+	// GetMessages는 해당 언어의 모든 메시지를 반환합니다
+	GetMessages() map[string]string
+
+	// GetLanguageCode는 해당 언어의 코드를 반환합니다 (예: "ko", "en")
+	GetLanguageCode() string
+}
+
+// Language는 지원되는 언어 코드를 정의합니다
+type Language string
+
+const (
+	// Korean 한국어
+	Korean Language = "ko"
+
+	// English 영어
+	English Language = "en"
+
+	// DefaultLanguage 기본 언어
+	DefaultLanguage = Korean
+)
+
+// IsValidLanguage는 주어진 언어 코드가 유효한지 검사합니다
+func IsValidLanguage(lang string) bool {
+	switch Language(lang) {
+	case Korean, English:
+		return true
+	default:
+		return false
+	}
+}
+
+```
+## internal/logger/domain/entity/log_entry.go
+```go
+package entity
+
+import (
+	"fmt"
 	"time"
 )
 
-// LogLevel은 로그의 중요도를 나타냅니다
+// LogEntry는 하나의 로그 항목을 나타냅니다.
+type LogEntry struct {
+	// Level은 로그의 중요도를 나타냅니다.
+	Level LogLevel
+	// Message는 로그 메시지 내용입니다.
+	Message string
+	// Timestamp는 로그가 생성된 시간입니다.
+	Timestamp time.Time
+	// CallerInfo는 로그를 생성한 코드의 위치 정보입니다.
+	CallerInfo string
+	// Fields는 로그에 추가되는 구조화된 데이터입니다.
+	Fields map[string]interface{}
+}
+
+// NewLogEntry는 새로운 LogEntry를 생성합니다.
+func NewLogEntry(level LogLevel, message string, callerInfo string) *LogEntry {
+	return &LogEntry{
+		Level:      level,
+		Message:    message,
+		Timestamp:  time.Now(),
+		CallerInfo: callerInfo,
+		Fields:     make(map[string]interface{}),
+	}
+}
+
+// WithField는 로그 엔트리에 필드를 추가합니다.
+func (e *LogEntry) WithField(key string, value interface{}) *LogEntry {
+	e.Fields[key] = value
+	return e
+}
+
+// Format은 로그 엔트리를 문자열로 포맷팅합니다.
+func (e *LogEntry) Format() string {
+	base := fmt.Sprintf("[%s] %s [%s] %s",
+		e.Timestamp.Format("2006-01-02 15:04:05"),
+		e.Level.String(),
+		e.CallerInfo,
+		e.Message,
+	)
+
+	// 추가 필드가 있는 경우 포함
+	if len(e.Fields) > 0 {
+		fields := ""
+		for k, v := range e.Fields {
+			fields += fmt.Sprintf(" %s=%v", k, v)
+		}
+		base += fields
+	}
+
+	return base
+}
+
+// IsValid는 로그 엔트리가 유효한지 검사합니다.
+func (e *LogEntry) IsValid() bool {
+	return e.Level.IsValid() &&
+		e.Message != "" &&
+		!e.Timestamp.IsZero() &&
+		e.CallerInfo != ""
+}
+
+```
+## internal/logger/domain/entity/log_level.go
+```go
+// Package entity는 로거 도메인의 핵심 엔티티들을 정의합니다.
+package entity
+
+// LogLevel은 로그의 중요도를 나타냅니다.
 type LogLevel int
 
 const (
+	// DEBUG는 디버깅 목적의 상세 정보를 나타냅니다.
 	DEBUG LogLevel = iota
+	// INFO는 일반적인 정보성 메시지를 나타냅니다.
 	INFO
+	// WARN은 잠재적인 문제를 나타냅니다.
 	WARN
+	// ERROR는 오류 상황을 나타냅니다.
 	ERROR
+	// FATAL은 애플리케이션을 중단시킬 수 있는 심각한 오류를 나타냅니다.
 	FATAL
 )
 
-// 로그 레벨을 문자열로 변환
+// String은 로그 레벨을 문자열로 변환합니다.
 func (l LogLevel) String() string {
 	return [...]string{"DEBUG", "INFO", "WARN", "ERROR", "FATAL"}[l]
 }
 
-// LogEntry는 하나의 로그 항목을 나타냅니다
-type LogEntry struct {
-	Level      LogLevel  // 로그 레벨
-	Message    string    // 로그 메시지
-	Timestamp  time.Time // 로그 발생 시간
-	CallerInfo string    // 호출자 정보
+// IsValid는 로그 레벨이 유효한지 검사합니다.
+func (l LogLevel) IsValid() bool {
+	return l >= DEBUG && l <= FATAL
 }
 
-// Logger는 로깅을 관리하는 구조체입니다
-type Logger struct {
-	mu         sync.Mutex  // 동시성 제어를 위한 뮤텍스
-	logFile    *os.File    // 로그 파일
-	logger     *log.Logger // 실제 로깅을 수행하는 logger
-	logLevel   LogLevel    // 현재 로그 레벨
-	logPath    string      // 로그 파일 경로
-	maxSize    int64       // 최대 로그 파일 크기 (바이트)
-	maxBackups int         // 보관할 최대 백업 파일 수
+// IsError는 현재 로그 레벨이 에러 수준인지 확인합니다.
+func (l LogLevel) IsError() bool {
+	return l >= ERROR
 }
 
-// Config는 Logger 생성에 필요한 설정을 담는 구조체입니다
+```
+## internal/logger/domain/ports/logger_port.go
+```go
+package ports
+
+// LoggerPort는 로깅 시스템의 외부 인터페이스를 정의합니다.
+type LoggerPort interface {
+	// Info는 정보성 메시지를 기록합니다.
+	Info(format string, v ...interface{})
+
+	// Error는 에러 메시지를 기록합니다.
+	Error(format string, v ...interface{})
+
+	// Debug는 디버그 메시지를 기록합니다.
+	Debug(format string, v ...interface{})
+
+	// Warn은 경고 메시지를 기록합니다.
+	Warn(format string, v ...interface{})
+
+	// Fatal은 치명적인 에러를 기록하고 프로그램을 종료합니다.
+	Fatal(format string, v ...interface{})
+
+	// Close는 로거를 정리합니다.
+	Close() error
+}
+
+```
+## internal/logger/domain/repository/log_repository.go
+```go
+package repository
+
+import (
+	"path/filepath"
+
+	"github.com/kihyun1998/dupdater/internal/logger/domain/entity"
+)
+
+// LogRepository는 로그 저장소의 인터페이스를 정의합니다.
+type LogRepository interface {
+	// Write는 로그 엔트리를 저장합니다.
+	Write(entry *entity.LogEntry) error
+
+	// Rotate는 로그 파일을 순환합니다.
+	Rotate() error
+
+	// Close는 로그 저장소를 정리합니다.
+	Close() error
+}
+
+// LogConfig는 로그 저장소의 설정을 정의합니다.
+type LogConfig struct {
+	// LogPath는 로그 파일의 경로입니다.
+	LogPath string
+	// MaxSize는 로그 파일의 최대 크기(바이트)입니다.
+	MaxSize int64
+	// MaxBackups는 보관할 최대 백업 파일 수입니다.
+	MaxBackups int
+}
+
+// Validate는 로그 설정이 유효한지 검사합니다.
+func (c *LogConfig) Validate() error {
+	if c.LogPath == "" {
+		return filepath.ErrBadPattern
+	}
+	if c.MaxSize <= 0 {
+		c.MaxSize = 10 * 1024 * 1024 // 기본값 10MB
+	}
+	if c.MaxBackups <= 0 {
+		c.MaxBackups = 5 // 기본값 5개
+	}
+	return nil
+}
+
+// NewLogConfig는 새로운 LogConfig를 생성합니다.
+func NewLogConfig(path string, maxSize int64, maxBackups int) *LogConfig {
+	return &LogConfig{
+		LogPath:    path,
+		MaxSize:    maxSize,
+		MaxBackups: maxBackups,
+	}
+}
+
+```
+## internal/logger/domain/usecase/logger_service.go
+```go
+package usecase
+
+import (
+	"fmt"
+	"os"
+	"runtime"
+	"sync"
+
+	"github.com/kihyun1998/dupdater/internal/logger/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/ports"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/repository"
+)
+
+// loggerService는 LoggerPort의 구현체입니다.
+type loggerService struct {
+	mu         sync.RWMutex
+	repository repository.LogRepository
+	level      entity.LogLevel
+}
+
+// NewLoggerService는 새로운 LoggerService 인스턴스를 생성합니다.
+func NewLoggerService(repo repository.LogRepository, level entity.LogLevel) ports.LoggerPort {
+	return &loggerService{
+		repository: repo,
+		level:      level,
+	}
+}
+
+// log는 실제 로깅을 수행하는 내부 메서드입니다.
+func (l *loggerService) log(level entity.LogLevel, format string, args ...interface{}) {
+	if level < l.level {
+		return
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	// 호출자 정보 가져오기
+	_, file, line, ok := runtime.Caller(2)
+	callerInfo := "unknown"
+	if ok {
+		callerInfo = fmt.Sprintf("%s:%d", file, line)
+	}
+
+	// 로그 엔트리 생성
+	entry := entity.NewLogEntry(
+		level,
+		fmt.Sprintf(format, args...),
+		callerInfo,
+	)
+
+	// 로그 저장
+	if err := l.repository.Write(entry); err != nil {
+		fmt.Printf("로그 저장 실패: %v\n", err)
+	}
+
+	// FATAL 레벨인 경우 프로그램 종료
+	if level == entity.FATAL {
+		l.Close()
+		os.Exit(1)
+	}
+}
+
+// LoggerPort 인터페이스 구현
+func (l *loggerService) Debug(format string, args ...interface{}) {
+	l.log(entity.DEBUG, format, args...)
+}
+
+func (l *loggerService) Info(format string, args ...interface{}) {
+	l.log(entity.INFO, format, args...)
+}
+
+func (l *loggerService) Warn(format string, args ...interface{}) {
+	l.log(entity.WARN, format, args...)
+}
+
+func (l *loggerService) Error(format string, args ...interface{}) {
+	l.log(entity.ERROR, format, args...)
+}
+
+func (l *loggerService) Fatal(format string, args ...interface{}) {
+	l.log(entity.FATAL, format, args...)
+}
+
+func (l *loggerService) Close() error {
+	return l.repository.Close()
+}
+
+```
+## internal/logger/factory.go
+```go
+package logger
+
+import (
+	"github.com/kihyun1998/dupdater/internal/logger/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/ports"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/usecase"
+	"github.com/kihyun1998/dupdater/internal/logger/infrastructure"
+)
+
+// Config는 로거 생성에 필요한 설정을 정의합니다.
 type Config struct {
-	LogPath    string   // 로그 파일 경로
-	LogLevel   LogLevel // 로그 레벨
-	MaxSize    int64    // 최대 파일 크기 (바이트)
-	MaxBackups int      // 최대 백업 파일 수
+	LogPath    string          // 로그 파일 경로
+	LogLevel   entity.LogLevel // 로그 레벨
+	MaxSize    int64           // 최대 파일 크기 (바이트)
+	MaxBackups int             // 최대 백업 파일 수
 }
 
-// New는 새로운 Logger 인스턴스를 생성합니다
-func New(config Config) (*Logger, error) {
-	// 기본값 설정
-	if config.LogPath == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("홈 디렉토리 찾기 실패: %w", err)
-		}
-		config.LogPath = filepath.Join(homeDir, ".testfolder", "logs", "updater.log")
+// New는 새로운 로거 인스턴스를 생성합니다.
+func New(config Config) (ports.LoggerPort, error) {
+	// 저장소 설정 생성
+	repoConfig := repository.NewLogConfig(
+		config.LogPath,
+		config.MaxSize,
+		config.MaxBackups,
+	)
+
+	// 파일 로거 생성
+	fileLogger, err := infrastructure.NewFileLogger(repoConfig)
+	if err != nil {
+		return nil, err
 	}
 
-	if config.MaxSize == 0 {
-		config.MaxSize = 10 * 1024 * 1024 // 기본 10MB
-	}
+	// 로깅 서비스 생성 및 반환
+	return usecase.NewLoggerService(fileLogger, config.LogLevel), nil
+}
 
-	if config.MaxBackups == 0 {
-		config.MaxBackups = 5 // 기본 5개 백업
+```
+## internal/logger/infrastructure/file_logger.go
+```go
+package infrastructure
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+
+	"github.com/kihyun1998/dupdater/internal/logger/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/repository"
+)
+
+// FileLogger는 파일 기반 로그 저장소입니다.
+type FileLogger struct {
+	mu       sync.RWMutex
+	config   *repository.LogConfig
+	file     *os.File
+	fileSize int64
+}
+
+// NewFileLogger는 새로운 FileLogger를 생성합니다.
+func NewFileLogger(config *repository.LogConfig) (repository.LogRepository, error) {
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("로거 설정 검증 실패: %w", err)
 	}
 
 	// 로그 디렉토리 생성
@@ -1341,140 +1906,83 @@ func New(config Config) (*Logger, error) {
 		return nil, fmt.Errorf("로그 디렉토리 생성 실패: %w", err)
 	}
 
-	// 로그 파일 생성
-	logFile, err := os.OpenFile(
+	// 로그 파일 생성 또는 열기
+	file, err := os.OpenFile(
 		config.LogPath,
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND,
 		0644,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("로그 파일 생성 실패: %w", err)
+		return nil, fmt.Errorf("로그 파일 열기 실패: %w", err)
 	}
 
-	return &Logger{
-		logFile:    logFile,
-		logger:     log.New(logFile, "", 0),
-		logLevel:   config.LogLevel,
-		logPath:    config.LogPath,
-		maxSize:    config.MaxSize,
-		maxBackups: config.MaxBackups,
+	// 현재 파일 크기 확인
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, fmt.Errorf("파일 정보 가져오기 실패: %w", err)
+	}
+
+	return &FileLogger{
+		config:   config,
+		file:     file,
+		fileSize: info.Size(),
 	}, nil
 }
 
-// log는 실제 로깅을 수행하는 내부 메서드입니다
-func (l *Logger) log(level LogLevel, format string, args ...interface{}) {
-	if level < l.logLevel {
-		return
+// Write는 로그 엔트리를 파일에 기록합니다.
+func (f *FileLogger) Write(entry *entity.LogEntry) error {
+	if !entry.IsValid() {
+		return fmt.Errorf("유효하지 않은 로그 엔트리")
 	}
 
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	f.mu.Lock()
+	defer f.mu.Unlock()
 
-	// 로그 순환 체크
-	if err := l.checkRotate(); err != nil {
-		fmt.Fprintf(os.Stderr, "로그 순환 실패: %v\n", err)
-	}
+	// 로그 문자열 생성
+	logString := entry.Format() + "\n"
+	logSize := int64(len(logString))
 
-	// 호출자 정보 가져오기
-	_, file, line, ok := runtime.Caller(2)
-	callerInfo := "unknown"
-	if ok {
-		callerInfo = fmt.Sprintf("%s:%d", filepath.Base(file), line)
-	}
-
-	// 로그 엔트리 생성
-	entry := LogEntry{
-		Level:      level,
-		Message:    fmt.Sprintf(format, args...),
-		Timestamp:  time.Now(),
-		CallerInfo: callerInfo,
-	}
-
-	// 로그 포맷팅 및 작성
-	logLine := fmt.Sprintf(
-		"[%s] %s [%s] %s",
-		entry.Timestamp.Format("2006-01-02 15:04:05"),
-		entry.Level,
-		entry.CallerInfo,
-		entry.Message,
-	)
-
-	if err := l.logger.Output(0, logLine); err != nil {
-		fmt.Fprintf(os.Stderr, "로그 작성 실패: %v\n", err)
-	}
-}
-
-// 공개 로깅 메서드들
-func (l *Logger) Debug(format string, args ...interface{}) {
-	l.log(DEBUG, format, args...)
-}
-
-func (l *Logger) Info(format string, args ...interface{}) {
-	l.log(INFO, format, args...)
-}
-
-func (l *Logger) Warn(format string, args ...interface{}) {
-	l.log(WARN, format, args...)
-}
-
-func (l *Logger) Error(format string, args ...interface{}) {
-	l.log(ERROR, format, args...)
-}
-
-func (l *Logger) Fatal(format string, args ...interface{}) {
-	l.log(FATAL, format, args...)
-	os.Exit(1)
-}
-
-// Close는 로거를 정리합니다
-func (l *Logger) Close() error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if l.logFile != nil {
-		if err := l.logFile.Sync(); err != nil {
-			return fmt.Errorf("로그 파일 동기화 실패: %w", err)
+	// 파일 크기 체크 및 순환
+	if f.fileSize+logSize > f.config.MaxSize {
+		if err := f.rotate(); err != nil {
+			return fmt.Errorf("로그 파일 순환 실패: %w", err)
 		}
-		if err := l.logFile.Close(); err != nil {
-			return fmt.Errorf("로그 파일 닫기 실패: %w", err)
-		}
-		l.logFile = nil
 	}
+
+	// 로그 기록
+	n, err := f.file.WriteString(logString)
+	if err != nil {
+		return fmt.Errorf("로그 쓰기 실패: %w", err)
+	}
+
+	f.fileSize += int64(n)
 	return nil
 }
 
-// checkRotate는 로그 파일 크기를 확인하고 필요시 순환합니다
-func (l *Logger) checkRotate() error {
-	info, err := l.logFile.Stat()
-	if err != nil {
-		return fmt.Errorf("파일 정보 가져오기 실패: %w", err)
-	}
-
-	if info.Size() < l.maxSize {
-		return nil
-	}
-
+// rotate는 로그 파일을 순환합니다.
+func (f *FileLogger) rotate() error {
 	// 현재 파일 닫기
-	if err := l.logFile.Close(); err != nil {
+	if err := f.file.Close(); err != nil {
 		return fmt.Errorf("현재 로그 파일 닫기 실패: %w", err)
 	}
 
-	// 기존 백업 파일들 순환
-	for i := l.maxBackups - 1; i >= 0; i-- {
-		oldPath := fmt.Sprintf("%s.%d", l.logPath, i)
-		newPath := fmt.Sprintf("%s.%d", l.logPath, i+1)
+	// 백업 파일 순환
+	for i := f.config.MaxBackups - 1; i >= 0; i-- {
+		oldPath := fmt.Sprintf("%s.%d", f.config.LogPath, i)
+		newPath := fmt.Sprintf("%s.%d", f.config.LogPath, i+1)
 
 		if i == 0 {
-			oldPath = l.logPath
+			oldPath = f.config.LogPath
 		}
 
-		// 마지막 백업 파일 삭제
-		if i == l.maxBackups-1 {
+		// 마지막 백업 파일은 삭제
+		if i == f.config.MaxBackups-1 {
 			os.Remove(newPath)
 			continue
 		}
 
-		// 나머지 파일들 이름 변경
+		// 파일 이름 변경
 		if _, err := os.Stat(oldPath); err == nil {
 			if err := os.Rename(oldPath, newPath); err != nil {
 				return fmt.Errorf("파일 이름 변경 실패: %w", err)
@@ -1483,8 +1991,8 @@ func (l *Logger) checkRotate() error {
 	}
 
 	// 새 로그 파일 생성
-	newFile, err := os.OpenFile(
-		l.logPath,
+	file, err := os.OpenFile(
+		f.config.LogPath,
 		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
 		0644,
 	)
@@ -1492,11 +2000,287 @@ func (l *Logger) checkRotate() error {
 		return fmt.Errorf("새 로그 파일 생성 실패: %w", err)
 	}
 
-	l.logFile = newFile
-	l.logger = log.New(newFile, "", 0)
-
+	f.file = file
+	f.fileSize = 0
 	return nil
 }
+
+// Rotate는 수동으로 로그 파일을 순환합니다.
+func (f *FileLogger) Rotate() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.rotate()
+}
+
+// Close는 로거를 정리합니다.
+func (f *FileLogger) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.file != nil {
+		if err := f.file.Sync(); err != nil {
+			return fmt.Errorf("파일 동기화 실패: %w", err)
+		}
+		if err := f.file.Close(); err != nil {
+			return fmt.Errorf("파일 닫기 실패: %w", err)
+		}
+		f.file = nil
+	}
+	return nil
+}
+
+// GetCurrentSize는 현재 로그 파일의 크기를 반환합니다.
+func (f *FileLogger) GetCurrentSize() int64 {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.fileSize
+}
+
+// GetConfig는 현재 로거의 설정을 반환합니다.
+func (f *FileLogger) GetConfig() *repository.LogConfig {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.config
+}
+
+```
+## internal/logger/logger.go
+```go
+package logger
+
+// import (
+// 	"fmt"
+// 	"log"
+// 	"os"
+// 	"path/filepath"
+// 	"runtime"
+// 	"sync"
+// 	"time"
+// )
+
+// // LogLevel은 로그의 중요도를 나타냅니다
+// type LogLevel int
+
+// const (
+// 	DEBUG LogLevel = iota
+// 	INFO
+// 	WARN
+// 	ERROR
+// 	FATAL
+// )
+
+// // 로그 레벨을 문자열로 변환
+// func (l LogLevel) String() string {
+// 	return [...]string{"DEBUG", "INFO", "WARN", "ERROR", "FATAL"}[l]
+// }
+
+// // LogEntry는 하나의 로그 항목을 나타냅니다
+// type LogEntry struct {
+// 	Level      LogLevel  // 로그 레벨
+// 	Message    string    // 로그 메시지
+// 	Timestamp  time.Time // 로그 발생 시간
+// 	CallerInfo string    // 호출자 정보
+// }
+
+// // Logger는 로깅을 관리하는 구조체입니다
+// type Logger struct {
+// 	mu         sync.Mutex  // 동시성 제어를 위한 뮤텍스
+// 	logFile    *os.File    // 로그 파일
+// 	logger     *log.Logger // 실제 로깅을 수행하는 logger
+// 	logLevel   LogLevel    // 현재 로그 레벨
+// 	logPath    string      // 로그 파일 경로
+// 	maxSize    int64       // 최대 로그 파일 크기 (바이트)
+// 	maxBackups int         // 보관할 최대 백업 파일 수
+// }
+
+// // Config는 Logger 생성에 필요한 설정을 담는 구조체입니다
+// type Config struct {
+// 	LogPath    string   // 로그 파일 경로
+// 	LogLevel   LogLevel // 로그 레벨
+// 	MaxSize    int64    // 최대 파일 크기 (바이트)
+// 	MaxBackups int      // 최대 백업 파일 수
+// }
+
+// // New는 새로운 Logger 인스턴스를 생성합니다
+// func New(config Config) (*Logger, error) {
+// 	// 기본값 설정
+// 	if config.LogPath == "" {
+// 		homeDir, err := os.UserHomeDir()
+// 		if err != nil {
+// 			return nil, fmt.Errorf("홈 디렉토리 찾기 실패: %w", err)
+// 		}
+// 		config.LogPath = filepath.Join(homeDir, ".testfolder", "logs", "updater.log")
+// 	}
+
+// 	if config.MaxSize == 0 {
+// 		config.MaxSize = 10 * 1024 * 1024 // 기본 10MB
+// 	}
+
+// 	if config.MaxBackups == 0 {
+// 		config.MaxBackups = 5 // 기본 5개 백업
+// 	}
+
+// 	// 로그 디렉토리 생성
+// 	if err := os.MkdirAll(filepath.Dir(config.LogPath), 0755); err != nil {
+// 		return nil, fmt.Errorf("로그 디렉토리 생성 실패: %w", err)
+// 	}
+
+// 	// 로그 파일 생성
+// 	logFile, err := os.OpenFile(
+// 		config.LogPath,
+// 		os.O_CREATE|os.O_WRONLY|os.O_APPEND,
+// 		0644,
+// 	)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("로그 파일 생성 실패: %w", err)
+// 	}
+
+// 	return &Logger{
+// 		logFile:    logFile,
+// 		logger:     log.New(logFile, "", 0),
+// 		logLevel:   config.LogLevel,
+// 		logPath:    config.LogPath,
+// 		maxSize:    config.MaxSize,
+// 		maxBackups: config.MaxBackups,
+// 	}, nil
+// }
+
+// // log는 실제 로깅을 수행하는 내부 메서드입니다
+// func (l *Logger) log(level LogLevel, format string, args ...interface{}) {
+// 	if level < l.logLevel {
+// 		return
+// 	}
+
+// 	l.mu.Lock()
+// 	defer l.mu.Unlock()
+
+// 	// 로그 순환 체크
+// 	if err := l.checkRotate(); err != nil {
+// 		fmt.Fprintf(os.Stderr, "로그 순환 실패: %v\n", err)
+// 	}
+
+// 	// 호출자 정보 가져오기
+// 	_, file, line, ok := runtime.Caller(2)
+// 	callerInfo := "unknown"
+// 	if ok {
+// 		callerInfo = fmt.Sprintf("%s:%d", filepath.Base(file), line)
+// 	}
+
+// 	// 로그 엔트리 생성
+// 	entry := LogEntry{
+// 		Level:      level,
+// 		Message:    fmt.Sprintf(format, args...),
+// 		Timestamp:  time.Now(),
+// 		CallerInfo: callerInfo,
+// 	}
+
+// 	// 로그 포맷팅 및 작성
+// 	logLine := fmt.Sprintf(
+// 		"[%s] %s [%s] %s",
+// 		entry.Timestamp.Format("2006-01-02 15:04:05"),
+// 		entry.Level,
+// 		entry.CallerInfo,
+// 		entry.Message,
+// 	)
+
+// 	if err := l.logger.Output(0, logLine); err != nil {
+// 		fmt.Fprintf(os.Stderr, "로그 작성 실패: %v\n", err)
+// 	}
+// }
+
+// // 공개 로깅 메서드들
+// func (l *Logger) Debug(format string, args ...interface{}) {
+// 	l.log(DEBUG, format, args...)
+// }
+
+// func (l *Logger) Info(format string, args ...interface{}) {
+// 	l.log(INFO, format, args...)
+// }
+
+// func (l *Logger) Warn(format string, args ...interface{}) {
+// 	l.log(WARN, format, args...)
+// }
+
+// func (l *Logger) Error(format string, args ...interface{}) {
+// 	l.log(ERROR, format, args...)
+// }
+
+// func (l *Logger) Fatal(format string, args ...interface{}) {
+// 	l.log(FATAL, format, args...)
+// 	os.Exit(1)
+// }
+
+// // Close는 로거를 정리합니다
+// func (l *Logger) Close() error {
+// 	l.mu.Lock()
+// 	defer l.mu.Unlock()
+
+// 	if l.logFile != nil {
+// 		if err := l.logFile.Sync(); err != nil {
+// 			return fmt.Errorf("로그 파일 동기화 실패: %w", err)
+// 		}
+// 		if err := l.logFile.Close(); err != nil {
+// 			return fmt.Errorf("로그 파일 닫기 실패: %w", err)
+// 		}
+// 		l.logFile = nil
+// 	}
+// 	return nil
+// }
+
+// // checkRotate는 로그 파일 크기를 확인하고 필요시 순환합니다
+// func (l *Logger) checkRotate() error {
+// 	info, err := l.logFile.Stat()
+// 	if err != nil {
+// 		return fmt.Errorf("파일 정보 가져오기 실패: %w", err)
+// 	}
+
+// 	if info.Size() < l.maxSize {
+// 		return nil
+// 	}
+
+// 	// 현재 파일 닫기
+// 	if err := l.logFile.Close(); err != nil {
+// 		return fmt.Errorf("현재 로그 파일 닫기 실패: %w", err)
+// 	}
+
+// 	// 기존 백업 파일들 순환
+// 	for i := l.maxBackups - 1; i >= 0; i-- {
+// 		oldPath := fmt.Sprintf("%s.%d", l.logPath, i)
+// 		newPath := fmt.Sprintf("%s.%d", l.logPath, i+1)
+
+// 		if i == 0 {
+// 			oldPath = l.logPath
+// 		}
+
+// 		// 마지막 백업 파일 삭제
+// 		if i == l.maxBackups-1 {
+// 			os.Remove(newPath)
+// 			continue
+// 		}
+
+// 		// 나머지 파일들 이름 변경
+// 		if _, err := os.Stat(oldPath); err == nil {
+// 			if err := os.Rename(oldPath, newPath); err != nil {
+// 				return fmt.Errorf("파일 이름 변경 실패: %w", err)
+// 			}
+// 		}
+// 	}
+
+// 	// 새 로그 파일 생성
+// 	newFile, err := os.OpenFile(
+// 		l.logPath,
+// 		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+// 		0644,
+// 	)
+// 	if err != nil {
+// 		return fmt.Errorf("새 로그 파일 생성 실패: %w", err)
+// 	}
+
+// 	l.logFile = newFile
+// 	l.logger = log.New(newFile, "", 0)
+
+// 	return nil
+// }
 
 ```
 ## internal/network/manager.go
@@ -1717,6 +2501,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
+	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
 )
 
@@ -1729,6 +2514,7 @@ type StatusCard struct {
 	progressBar  *widget.ProgressBar
 	subtitleText *canvas.Text
 	currentTheme theme.ThemeVariant
+	i18n         i18n.LocaleManager
 
 	targetProgress  float64
 	currentProgress float64
@@ -1738,12 +2524,13 @@ type StatusCard struct {
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
-func NewStatusCard(fromVersion, toVersion string, themeVariant theme.ThemeVariant) *StatusCard {
+func NewStatusCard(fromVersion, toVersion string, themeVariant theme.ThemeVariant, i18n i18n.LocaleManager) *StatusCard {
 	card := &StatusCard{
 		targetProgress:  0,
 		currentProgress: 0,
 		animating:       false,
 		currentTheme:    themeVariant,
+		i18n:            i18n,
 	}
 	card.ExtendBaseWidget(card)
 	card.setupUI(fromVersion, toVersion)
@@ -1757,13 +2544,17 @@ func (s *StatusCard) CreateRenderer() fyne.WidgetRenderer {
 
 // setupUI는 UI 컴포넌트를 초기화합니다
 func (s *StatusCard) setupUI(fromVersion, toVersion string) {
-	// 타이틀
-	s.titleText = canvas.NewText("새로운 업데이트가 있습니다", s.currentTheme.TextColor())
+	// 타이틀 텍스트
+	s.titleText = canvas.NewText(
+		s.i18n.GetMessage("update.header.new_update"),
+		s.currentTheme.TextColor(),
+	)
 	s.titleText.TextSize = s.currentTheme.FontSizeLarge()
 	s.titleText.TextStyle = fyne.TextStyle{Bold: true}
 
 	// 버전 정보
-	s.versionText = canvas.NewText(fmt.Sprintf("%s → %s", fromVersion, toVersion), s.currentTheme.SubTextColor())
+	versionFormat := fmt.Sprintf("%s → %s", fromVersion, toVersion)
+	s.versionText = canvas.NewText(versionFormat, s.currentTheme.SubTextColor())
 	s.versionText.TextSize = s.currentTheme.FontSizeMedium()
 
 	// 진행 바
@@ -1771,7 +2562,10 @@ func (s *StatusCard) setupUI(fromVersion, toVersion string) {
 	s.progressBar.Resize(fyne.NewSize(350, 20))
 
 	// 상태 메시지
-	s.subtitleText = canvas.NewText("업데이트가 완료되면 자동으로 앱이 다시 시작됩니다.", s.currentTheme.SubTextColor())
+	s.subtitleText = canvas.NewText(
+		s.i18n.GetMessage("update.info.restart"),
+		s.currentTheme.SubTextColor(),
+	)
 	s.subtitleText.TextSize = s.currentTheme.FontSizeSmall()
 
 	// 레이아웃 구성
@@ -1787,7 +2581,7 @@ func (s *StatusCard) setupUI(fromVersion, toVersion string) {
 
 // SetError는 에러 상태를 표시합니다
 func (s *StatusCard) SetError(errMsg string) {
-	s.titleText.Text = "업데이트 중 오류가 발생했습니다"
+	s.titleText.Text = s.i18n.GetMessage("update.error.generic")
 	s.titleText.Color = s.currentTheme.ErrorColor()
 	s.subtitleText.Text = errMsg
 	s.subtitleText.Color = s.currentTheme.ErrorColor()
@@ -1797,7 +2591,7 @@ func (s *StatusCard) SetError(errMsg string) {
 
 // SetRestoring는 복원 진행 상태를 표시합니다
 func (s *StatusCard) SetRestoring(msg string) {
-	s.titleText.Text = "이전 버전으로 복원 중"
+	s.titleText.Text = s.i18n.GetMessage("update.restore.in_progress")
 	s.titleText.Color = s.currentTheme.WarningColor()
 	s.subtitleText.Text = msg
 	s.subtitleText.Color = s.currentTheme.WarningColor()
@@ -1807,9 +2601,9 @@ func (s *StatusCard) SetRestoring(msg string) {
 
 // SetRestoreComplete는 복원 완료 상태를 표시합니다
 func (s *StatusCard) SetRestoreComplete() {
-	s.titleText.Text = "복원이 완료되었습니다"
+	s.titleText.Text = s.i18n.GetMessage("update.restore.completed")
 	s.titleText.Color = s.currentTheme.SuccessColor()
-	s.subtitleText.Text = "앱이 곧 다시 시작됩니다"
+	s.subtitleText.Text = s.i18n.GetMessage("update.info.restart")
 	s.subtitleText.Color = s.currentTheme.SuccessColor()
 	s.progressBar.Hide()
 	s.Refresh()
@@ -1817,7 +2611,6 @@ func (s *StatusCard) SetRestoreComplete() {
 
 // UpdateStatus는 상태와 진행률을 업데이트합니다
 func (s *StatusCard) UpdateStatus(progress float64, message string) {
-	s.titleText.Text = "업데이트 진행 중"
 	s.titleText.Color = s.currentTheme.TextColor()
 	s.subtitleText.Text = message
 	s.subtitleText.Color = s.currentTheme.SubTextColor()
@@ -1896,12 +2689,11 @@ func (s *StatusCard) animateProgress() {
 package ui
 
 import (
-	"fmt"
-
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/i18n"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/ui/components"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
 )
@@ -1916,9 +2708,11 @@ type State struct {
 
 // Manager는 UI를 관리하는 구조체입니다
 type Manager struct {
-	app          fyne.App
-	mainWindow   fyne.Window
-	logger       *logger.Logger
+	app        fyne.App
+	mainWindow fyne.Window
+	logger     ports.LoggerPort
+	i18n       i18n.LocaleManager
+
 	totalSteps   int
 	currentStep  int
 	currentTheme theme.ThemeVariant
@@ -1935,8 +2729,9 @@ type Config struct {
 	TotalSteps  int
 	FromVersion string
 	ToVersion   string
-	Logger      *logger.Logger
+	Logger      ports.LoggerPort
 	Theme       theme.ThemeVariant
+	I18n        i18n.LocaleManager
 }
 
 // New는 새로운 Manager 인스턴스를 생성합니다
@@ -1949,6 +2744,7 @@ func New(config Config) *Manager {
 	manager := &Manager{
 		app:               fyneApp,
 		logger:            config.Logger,
+		i18n:              config.I18n,
 		totalSteps:        config.TotalSteps,
 		currentStep:       0,
 		animationComplete: false,
@@ -1956,7 +2752,9 @@ func New(config Config) *Manager {
 	}
 
 	// 메인 윈도우 생성
-	manager.mainWindow = manager.app.NewWindow(fmt.Sprintf("%s Updater", config.AppName))
+	manager.mainWindow = manager.app.NewWindow(
+		manager.i18n.GetMessage("update.title"),
+	)
 	manager.initializeUI(config)
 
 	return manager
@@ -1965,7 +2763,12 @@ func New(config Config) *Manager {
 // initializeUI는 UI 컴포넌트들을 초기화하고 배치합니다
 func (m *Manager) initializeUI(config Config) {
 	// StatusCard 생성 시 테마 전달
-	m.statusCard = components.NewStatusCard(config.FromVersion, config.ToVersion, m.currentTheme)
+	m.statusCard = components.NewStatusCard(
+		config.FromVersion,
+		config.ToVersion,
+		m.currentTheme,
+		m.i18n,
+	)
 
 	// 이미 설정된 completion callback이 있다면 설정
 	if m.completionCallback != nil {
@@ -1990,32 +2793,64 @@ func (m *Manager) initializeUI(config Config) {
 // SetCurrentStep은 현재 진행 단계를 업데이트합니다
 func (m *Manager) SetCurrentStep(step int) {
 	// step에 따른 적절한 메시지 설정
-	messages := map[int]string{
-		0: "앱 상태를 확인하고 있습니다...",
-		1: "업데이트 정보를 확인하고 있습니다...",
-		2: "업데이트 파일을 준비하고 있습니다...",
-		3: "업데이트 파일을 다운로드하고 있습니다...",
-		4: "업데이트 파일을 검증하고 있습니다...",
-		5: "업데이트를 설치하고 있습니다...",
-		6: "설치를 확인하고 있습니다...",
-		7: "업데이트가 완료되었습니다.",
+	messageKeys := map[int]string{
+		0: "update.status.checking",
+		1: "update.status.getting_info",
+		2: "update.status.preparing",
+		3: "update.status.downloading",
+		4: "update.status.verifying",
+		5: "update.status.installing",
+		6: "update.status.finalizing",
+		7: "update.status.completed",
 	}
-	if msg, ok := messages[step]; ok {
+	if msgKey, ok := messageKeys[step]; ok {
 		var progress float64
 		if step == m.totalSteps-1 {
-			// 마지막 단계에서는 100%로 설정
 			progress = 1.0
 		} else {
-			// 그 외의 경우 진행률 계산
 			progress = float64(step) / float64(m.totalSteps-1)
 		}
 
 		m.logger.Info("업데이트 진행률: %.2f%%, 단계: %d/%d", progress*100, step, m.totalSteps-1)
-		m.statusCard.UpdateStatus(progress, msg)
+		m.statusCard.UpdateStatus(progress, m.i18n.GetMessage(msgKey))
 	}
 }
 
-// GetTotalSteps은 전체 단계 수를 반환합니다
+// UpdateDetail은 상세 메시지를 업데이트합니다
+func (m *Manager) UpdateDetail(message string) {
+	m.statusCard.UpdateStatus(-1, message)
+}
+
+// ShowError는 에러 메시지를 표시합니다
+func (m *Manager) ShowError(err error) {
+	m.statusCard.SetError(err.Error())
+	if m.onRestore != nil {
+		m.ShowRestoring()
+		go m.onRestore()
+	}
+}
+
+// ShowProgress는 다운로드 진행률을 표시합니다
+func (m *Manager) ShowProgress(current, total int64) {
+	m.statusCard.SetProgress(current, total)
+}
+
+// ShowRestoring은 복원 진행 중임을 표시합니다
+func (m *Manager) ShowRestoring() {
+	m.statusCard.SetRestoring(m.i18n.GetMessage("update.restore.in_progress"))
+}
+
+// ShowRestoreComplete는 복원 완료를 표시합니다
+func (m *Manager) ShowRestoreComplete() {
+	m.statusCard.SetRestoreComplete()
+}
+
+// SetRestoreHandler는 복구 핸들러를 설정합니다
+func (m *Manager) SetRestoreHandler(handler func()) {
+	m.onRestore = handler
+}
+
+// GetTotalSteps는 전체 단계 수를 반환합니다
 func (m *Manager) GetTotalSteps() int {
 	return m.totalSteps
 }
@@ -2031,42 +2866,6 @@ func (m *Manager) SetCompletionCallback(callback func()) {
 			}
 		})
 	}
-}
-
-// UpdateDetail은 상세 메시지를 업데이트합니다
-func (m *Manager) UpdateDetail(message string) {
-	m.statusCard.UpdateStatus(-1, message) // -1은 진행률 변경 없음을 의미
-}
-
-// ShowError는 에러 메시지를 표시합니다
-func (m *Manager) ShowError(err error) {
-	m.statusCard.SetError(err.Error())
-
-	// 복구 가능한 경우 복구 UI 표시
-	if m.onRestore != nil {
-		m.ShowRestoring()
-		go m.onRestore()
-	}
-}
-
-// ShowProgress는 다운로드 진행률을 표시합니다
-func (m *Manager) ShowProgress(current, total int64) {
-	m.statusCard.SetProgress(current, total)
-}
-
-// ShowRestoring은 복원 진행 중임을 표시합니다
-func (m *Manager) ShowRestoring() {
-	m.statusCard.SetRestoring("이전 버전으로 복원중...")
-}
-
-// ShowRestoreComplete는 복원 완료를 표시합니다
-func (m *Manager) ShowRestoreComplete() {
-	m.statusCard.SetRestoreComplete()
-}
-
-// SetRestoreHandler는 복구 핸들러를 설정합니다
-func (m *Manager) SetRestoreHandler(handler func()) {
-	m.onRestore = handler
 }
 
 // Run은 UI를 실행합니다
