@@ -270,33 +270,26 @@ func (u *Updater) restartApplication() error {
 
 // restartAfterRestore는 복원 완료 후 애플리케이션을 재시작합니다
 func (u *Updater) restartAfterRestore() error {
-	// 마지막 단계 메시지 표시
+	u.ui.SetCurrentStep(0)
 	u.ui.UpdateDetail("복원이 완료되었습니다. 앱을 재시작합니다...")
 
-	// 복원 완료 채널
-	restorationComplete := make(chan struct{})
+	// 잠시 대기하여 메시지가 표시되도록 함
+	time.Sleep(2 * time.Second)
 
-	// UI에 완료 콜백 설정
-	u.ui.SetCompletionCallback(func() {
-		// 기존 버전으로 앱 실행 준비
-		cmd := exec.Command(fmt.Sprintf("./%s", u.appName))
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			CreationFlags: windows.CREATE_NEW_CONSOLE,
-		}
+	// 기존 버전으로 앱 실행 준비
+	cmd := exec.Command(fmt.Sprintf("./%s", u.appName))
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: windows.CREATE_NEW_CONSOLE,
+	}
 
-		// 앱 실행
-		if err := cmd.Start(); err != nil {
-			u.logger.Error("복원 후 애플리케이션 실행 실패: %v", err)
-			return
-		}
+	// 앱 실행
+	if err := cmd.Start(); err != nil {
+		u.logger.Error("복원 후 애플리케이션 실행 실패: %v", err)
+		return err
+	}
 
-		// 2초 대기 후 UI 종료
-		time.Sleep(2 * time.Second)
-		close(restorationComplete)
-	})
-
-	// 완료 대기
-	<-restorationComplete
+	// UI 종료 전 잠시 대기
+	time.Sleep(2 * time.Second)
 	u.ui.Close()
 
 	return nil
@@ -336,14 +329,6 @@ func (u *Updater) handleError(message string, err error) error {
 
 	u.ui.ShowError(fmt.Errorf("%s: %v", message, err))
 	return fmt.Errorf("%s: %v", message, err)
-}
-
-// 복원 완료 후 Updater에서 백업 디렉토리 삭제하도록 변경
-func (u *Updater) finalizeUpdate() {
-	// 업데이트 성공 또는 복원 완료 후 백업 디렉토리 삭제
-	if err := os.RemoveAll(u.fileManager.GetBackupDir()); err != nil {
-		u.logger.Error("백업 디렉토리 삭제 실패: %v", err)
-	}
 }
 
 // Logger는 로깅 작업을 위한 인터페이스입니다
