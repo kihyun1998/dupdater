@@ -639,6 +639,12 @@ func (u *Updater) handleError(message string, err error) error {
 			u.logger.Info("복원 완료 후 백업 디렉토리 유지됨: %s", u.fileManager.GetBackupDir())
 		}
 
+		// 복원 성공 시 애플리케이션 재시작 추가
+		u.logger.Info("복원이 완료됨. 애플리케이션을 재시작합니다...")
+		if err := u.restartApplication(); err != nil {
+			u.logger.Error("복원 후 애플리케이션 재시작 실패: %v", err)
+		}
+
 		return fmt.Errorf("%s, 파일이 복원됨: %v", message, err)
 	}
 

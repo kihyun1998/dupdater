@@ -267,6 +267,41 @@ func (u *Updater) restartApplication() error {
 
 	return nil
 }
+
+// restartAfterRestore는 복원 완료 후 애플리케이션을 재시작합니다
+func (u *Updater) restartAfterRestore() error {
+	// 마지막 단계 메시지 표시
+	u.ui.UpdateDetail("복원이 완료되었습니다. 앱을 재시작합니다...")
+
+	// 복원 완료 채널
+	restorationComplete := make(chan struct{})
+
+	// UI에 완료 콜백 설정
+	u.ui.SetCompletionCallback(func() {
+		// 기존 버전으로 앱 실행 준비
+		cmd := exec.Command(fmt.Sprintf("./%s", u.appName))
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			CreationFlags: windows.CREATE_NEW_CONSOLE,
+		}
+
+		// 앱 실행
+		if err := cmd.Start(); err != nil {
+			u.logger.Error("복원 후 애플리케이션 실행 실패: %v", err)
+			return
+		}
+
+		// 2초 대기 후 UI 종료
+		time.Sleep(2 * time.Second)
+		close(restorationComplete)
+	})
+
+	// 완료 대기
+	<-restorationComplete
+	u.ui.Close()
+
+	return nil
+}
+
 func (u *Updater) restoreFiles() error {
 	u.ui.UpdateDetail("파일을 복원하고 있습니다...")
 	return u.fileManager.Restore()
@@ -288,6 +323,12 @@ func (u *Updater) handleError(message string, err error) error {
 			u.logger.Error("백업 디렉토리는 이미 삭제됨")
 		} else {
 			u.logger.Info("복원 완료 후 백업 디렉토리 유지됨: %s", u.fileManager.GetBackupDir())
+		}
+
+		// 복원 성공 시 애플리케이션 재시작 추가
+		u.logger.Info("복원이 완료됨. 애플리케이션을 재시작합니다...")
+		if err := u.restartAfterRestore(); err != nil {
+			u.logger.Error("복원 후 애플리케이션 재시작 실패: %v", err)
 		}
 
 		return fmt.Errorf("%s, 파일이 복원됨: %v", message, err)
