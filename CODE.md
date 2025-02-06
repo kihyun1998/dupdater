@@ -48,7 +48,18 @@ dupdater/
     │   │   └── file_logger.go
     │   └── factory.go
     ├── network/
-    │   └── manager.go
+    │   ├── domain/
+    │   │   ├── entity/
+    │   │   │   ├── server_config.go
+    │   │   │   └── update_file.go
+    │   │   ├── repository/
+    │   │   │   └── network_repository.go
+    │   │   └── usecase/
+    │   │   │   └── network_service.go
+    │   ├── infrastructure/
+    │   │   └── repository/
+    │   │   │   └── http_repository.go
+    │   └── factory.go
     ├── ui/
     │   ├── components/
     │   │   ├── resources.go
@@ -67,7 +78,9 @@ dupdater/
     └── utils/
     │   ├── count.go
     │   └── system.go
-└── Readme.md
+├── Readme.md
+├── command.md
+└── plan.md
 ```
 
 ## Readme.md
@@ -370,6 +383,24 @@ func runTestMode(i18nManager i18nPort.LocalePort) {
 	// UI 실행
 	uiManager.Run()
 }
+
+```
+## command.md
+```md
+
+"[패키지명] 패키지를 리팩토링 해줘. 다음 원칙들을 지켜야해:
+
+1. 기존 인터페이스 유지하면서 내부만 클린 아키텍처로 변경
+2. 새로운 기능 추가하지 않기
+3. 에러 처리와 로깅만 개선
+4. 각 레이어별로 한 파일씩 작성하고 기존 코드와 비교 분석해주기"
+
+
+1. 도메인 엔티티
+2. repository 인터페이스 
+3. usecase 서비스
+4. infrastructure 구현체
+5. factory 조립
 
 ```
 ## internal/app/updater.go
@@ -2554,57 +2585,113 @@ func (f *FileLogger) GetConfig() *repository.LogConfig {
 }
 
 ```
-## internal/network/manager.go
+## internal/network/domain/entity/server_config.go
 ```go
-package network
+// Package entity는 네트워크 도메인의 핵심 개념을 정의합니다
+package entity
+
+import "fmt"
+
+// ServerConfig는 서버 설정 정보를 담는 엔티티입니다
+type ServerConfig struct {
+	Profile Profile // 현재 사용중인 서버 프로필
+}
+
+// Profile은 서버 프로필 정보를 담는 값 객체입니다
+type Profile struct {
+	Name string // 서버 프로필명 (예: "server1")
+	IP   string // 서버 IP 주소
+}
+
+// GetServerIP는 프로필의 서버 IP를 반환합니다
+func (sc *ServerConfig) GetServerIP() (string, error) {
+	if sc.Profile.IP == "" {
+		return "", fmt.Errorf("서버 IP가 설정되지 않았습니다")
+	}
+	return sc.Profile.IP, nil
+}
+
+```
+## internal/network/domain/entity/update_file.go
+```go
+package entity
+
+// UpdateFile은 업데이트 파일 정보를 담는 엔티티입니다
+type UpdateFile struct {
+	Filename string // 업데이트 파일명
+}
+
+// FileInfo는 다운로드된 파일의 정보를 담는 값 객체입니다
+type FileInfo struct {
+	ContentLength int64  // 파일 크기
+	ContentType   string // 파일 타입
+}
+
+```
+## internal/network/domain/repository/network_repository.go
+```go
+package repository
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"os"
-	"path/filepath"
+	"io"
+
+	"github.com/kihyun1998/dupdater/internal/network/domain/entity"
 )
 
-// Manager는 네트워크 통신을 관리하는 구조체입니다
-type Manager struct {
-	logger Logger // 로깅을 위한 인터페이스
+// NetworkRepository는 네트워크 작업을 추상화하는 인터페이스입니다
+type NetworkRepository interface {
+	// LoadServerConfig는 설정 파일에서 서버 설정을 로드합니다
+	LoadServerConfig(configPath string) (*entity.ServerConfig, error)
+
+	// FetchUpdateFileName은 서버로부터 업데이트 파일명을 조회합니다
+	FetchUpdateFileName(serverIP string) (*entity.UpdateFile, error)
+
+	// DownloadFile은 서버로부터 파일을 다운로드합니다
+	// io.ReadCloser를 반환하여 스트림 처리가 가능하도록 합니다
+	DownloadFile(serverIP string, filename string) (io.ReadCloser, *entity.FileInfo, error)
 }
 
-// Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
-type Config struct {
-	Logger Logger
+```
+## internal/network/domain/usecase/network_service.go
+```go
+// Package usecase는 네트워크 작업의 비즈니스 로직을 구현합니다
+package usecase
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+
+	"github.com/kihyun1998/dupdater/internal/network/domain/repository"
+)
+
+// NetworkService는 네트워크 작업의 비즈니스 로직을 구현합니다
+type NetworkService struct {
+	repo   repository.NetworkRepository
+	logger Logger
 }
 
-// New는 새로운 Manager 인스턴스를 생성합니다
-func New(config Config) *Manager {
-	return &Manager{
-		logger: config.Logger,
+// Logger는 로깅을 위한 인터페이스입니다
+type Logger interface {
+	Info(format string, v ...interface{})
+	Error(format string, v ...interface{})
+}
+
+// NewNetworkService는 새로운 NetworkService 인스턴스를 생성합니다
+func NewNetworkService(repo repository.NetworkRepository, logger Logger) *NetworkService {
+	return &NetworkService{
+		repo:   repo,
+		logger: logger,
 	}
 }
 
-// ServerConfig는 서버 설정 정보를 담는 구조체입니다
-type ServerConfig struct {
-	ProfileList []Profile `json:"profileList"`
-}
-
-// Profile은 서버 프로필 정보를 담는 구조체입니다
-type Profile struct {
-	Name string `json:"name"`
-	IP   string `json:"ip"`
-}
-
-// UpdateFileInfo는 업데이트 파일 정보를 담는 구조체입니다
-type UpdateFileInfo struct {
-	Filename string `json:"filename"`
-}
-
 // GetServerIP는 프로필명을 통해 서버 IP를 조회합니다
-func (m *Manager) GetServerIP(serverName string) (string, error) {
+func (s *NetworkService) GetServerIP(serverName string) (string, error) {
 	// 패닉 복구
 	defer func() {
 		if r := recover(); r != nil {
-			m.logger.Error("GetServerIP 함수에서 패닉 발생: %v", r)
+			s.logger.Error("GetServerIP 함수에서 패닉 발생: %v", r)
 		}
 	}()
 
@@ -2614,84 +2701,237 @@ func (m *Manager) GetServerIP(serverName string) (string, error) {
 		return "", fmt.Errorf("홈 디렉토리 경로 가져오기 실패: %w", err)
 	}
 
-	// 설정 파일 경로 설정 및 읽기
+	// 설정 파일 경로 설정 및 로드
 	configPath := filepath.Join(homeDir, ".testfolder", "config.json")
-	file, err := os.ReadFile(configPath)
+	config, err := s.repo.LoadServerConfig(configPath)
 	if err != nil {
-		return "", fmt.Errorf("설정 파일 읽기 실패: %w", err)
+		return "", fmt.Errorf("서버 설정 로드 실패: %w", err)
 	}
 
-	// JSON 파싱
-	var config ServerConfig
-	if err := json.Unmarshal(file, &config); err != nil {
-		return "", fmt.Errorf("설정 파일 파싱 실패: %w", err)
+	serverIP, err := config.GetServerIP()
+	if err != nil {
+		return "", fmt.Errorf("서버 IP 가져오기 실패: %w", err)
 	}
 
-	// 프로필 찾기
-	for _, profile := range config.ProfileList {
-		if profile.Name == serverName {
-			return profile.IP, nil
-		}
-	}
-
-	return "", fmt.Errorf("서버 프로필을 찾을 수 없음: %s", serverName)
+	return serverIP, nil
 }
 
 // GetUpdateFileName은 서버로부터 업데이트 파일명을 가져옵니다
-func (m *Manager) GetUpdateFileName(serverIP string) (string, error) {
+func (s *NetworkService) GetUpdateFileName(serverIP string) (string, error) {
 	// 패닉 복구
 	defer func() {
 		if r := recover(); r != nil {
-			m.logger.Error("GetUpdateFileName 함수에서 패닉 발생: %v", r)
+			s.logger.Error("GetUpdateFileName 함수에서 패닉 발생: %v", r)
 		}
 	}()
 
-	// URL 구성 및 요청
-	url := fmt.Sprintf("%s/update/updatefilename", serverIP)
-	resp, err := http.Get(url)
+	updateFile, err := s.repo.FetchUpdateFileName(serverIP)
 	if err != nil {
-		return "", fmt.Errorf("서버 요청 실패: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// 응답 상태 코드 확인
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("서버 응답 오류: %d", resp.StatusCode)
+		return "", fmt.Errorf("업데이트 파일명 가져오기 실패: %w", err)
 	}
 
-	// JSON 응답 파싱
-	var result UpdateFileInfo
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("응답 데이터 파싱 실패: %w", err)
+	if updateFile.Filename == "" {
+		return "", fmt.Errorf("업데이트 파일명이 비어있습니다")
 	}
 
-	if result.Filename == "" {
-		return "", fmt.Errorf("업데이트 파일명이 없습니다")
-	}
-
-	return result.Filename, nil
+	return updateFile.Filename, nil
 }
 
 // DownloadFile은 업데이트 파일을 다운로드합니다
-func (m *Manager) DownloadFile(serverIP, filename string) (*http.Response, error) {
-	url := fmt.Sprintf("%s/update/file", serverIP)
-	resp, err := http.Get(url)
+func (s *NetworkService) DownloadFile(serverIP string, filename string) (io.ReadCloser, error) {
+	reader, fileInfo, err := s.repo.DownloadFile(serverIP, filename)
 	if err != nil {
-		return nil, fmt.Errorf("파일 다운로드 요청 실패: %w", err)
+		return nil, fmt.Errorf("파일 다운로드 실패: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		return nil, fmt.Errorf("파일 다운로드 응답 오류: %d", resp.StatusCode)
-	}
+	s.logger.Info("다운로드 시작 - 파일: %s, 크기: %d bytes", filename, fileInfo.ContentLength)
+	return reader, nil
+}
 
-	return resp, nil
+```
+## internal/network/factory.go
+```go
+package network
+
+import (
+	"net/http"
+
+	"github.com/kihyun1998/dupdater/internal/network/domain/usecase"
+	"github.com/kihyun1998/dupdater/internal/network/infrastructure/repository"
+)
+
+// Manager는 네트워크 작업을 관리하는 인터페이스입니다
+type Manager interface {
+	GetServerIP(serverName string) (string, error)
+	GetUpdateFileName(serverIP string) (string, error)
+	DownloadFile(serverIP, filename string) (*http.Response, error)
+}
+
+// Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
+type Config struct {
+	Logger Logger
 }
 
 // Logger는 로깅을 위한 인터페이스입니다
 type Logger interface {
 	Info(format string, v ...interface{})
 	Error(format string, v ...interface{})
+}
+
+// networkManager는 Manager 인터페이스를 구현하는 구조체입니다
+type networkManager struct {
+	service *usecase.NetworkService
+}
+
+// New는 새로운 Manager 인스턴스를 생성합니다
+func New(config Config) Manager {
+	// HTTP Repository 생성
+	repo := repository.NewHTTPRepository(config.Logger)
+
+	// Network Service 생성
+	service := usecase.NewNetworkService(repo, config.Logger)
+
+	return &networkManager{
+		service: service,
+	}
+}
+
+// GetServerIP는 프로필명을 통해 서버 IP를 조회합니다
+func (m *networkManager) GetServerIP(serverName string) (string, error) {
+	return m.service.GetServerIP(serverName)
+}
+
+// GetUpdateFileName은 서버로부터 업데이트 파일명을 가져옵니다
+func (m *networkManager) GetUpdateFileName(serverIP string) (string, error) {
+	return m.service.GetUpdateFileName(serverIP)
+}
+
+// DownloadFile은 업데이트 파일을 다운로드합니다
+func (m *networkManager) DownloadFile(serverIP, filename string) (*http.Response, error) {
+	reader, err := m.service.DownloadFile(serverIP, filename)
+	if err != nil {
+		return nil, err
+	}
+
+	// io.ReadCloser를 http.Response로 변환
+	return &http.Response{
+		Body: reader,
+		// 기존 코드와의 호환성을 위해 Response 객체로 감싸서 반환
+	}, nil
+}
+
+```
+## internal/network/infrastructure/repository/http_repository.go
+```go
+// Package repository는 네트워크 작업의 실제 구현체를 제공합니다
+package repository
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+
+	"github.com/kihyun1998/dupdater/internal/network/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/network/domain/repository"
+)
+
+// HTTPRepository는 HTTP 기반의 네트워크 작업을 구현합니다
+type HTTPRepository struct {
+	client *http.Client
+	logger Logger
+}
+
+// Logger는 로깅을 위한 인터페이스입니다
+type Logger interface {
+	Info(format string, v ...interface{})
+	Error(format string, v ...interface{})
+}
+
+// NewHTTPRepository는 새로운 HTTPRepository 인스턴스를 생성합니다
+func NewHTTPRepository(logger Logger) repository.NetworkRepository {
+	return &HTTPRepository{
+		client: &http.Client{},
+		logger: logger,
+	}
+}
+
+// LoadServerConfig는 설정 파일에서 서버 설정을 로드합니다
+func (r *HTTPRepository) LoadServerConfig(configPath string) (*entity.ServerConfig, error) {
+	file, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("설정 파일 읽기 실패: %w", err)
+	}
+
+	var config struct {
+		ProfileList []struct {
+			Name string `json:"name"`
+			IP   string `json:"ip"`
+		} `json:"profileList"`
+	}
+	if err := json.Unmarshal(file, &config); err != nil {
+		return nil, fmt.Errorf("설정 파일 파싱 실패: %w", err)
+	}
+
+	for _, profile := range config.ProfileList {
+		if profile.Name == "server1" {
+			return &entity.ServerConfig{
+				Profile: entity.Profile{
+					Name: profile.Name,
+					IP:   profile.IP,
+				},
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("서버 프로필을 찾을 수 없음: server1")
+}
+
+// FetchUpdateFileName은 서버로부터 업데이트 파일명을 조회합니다
+func (r *HTTPRepository) FetchUpdateFileName(serverIP string) (*entity.UpdateFile, error) {
+	url := fmt.Sprintf("%s/update/updatefilename", serverIP)
+	resp, err := r.client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("서버 요청 실패: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("서버 응답 오류: %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Filename string `json:"filename"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("응답 데이터 파싱 실패: %w", err)
+	}
+
+	return &entity.UpdateFile{
+		Filename: result.Filename,
+	}, nil
+}
+
+// DownloadFile은 서버로부터 파일을 다운로드합니다
+func (r *HTTPRepository) DownloadFile(serverIP string, filename string) (io.ReadCloser, *entity.FileInfo, error) {
+	url := fmt.Sprintf("%s/update/file", serverIP)
+	resp, err := r.client.Get(url)
+	if err != nil {
+		return nil, nil, fmt.Errorf("파일 다운로드 요청 실패: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("파일 다운로드 응답 오류: %d", resp.StatusCode)
+	}
+
+	fileInfo := &entity.FileInfo{
+		ContentLength: resp.ContentLength,
+		ContentType:   resp.Header.Get("Content-Type"),
+	}
+
+	return resp.Body, fileInfo, nil
 }
 
 ```
@@ -3868,4 +4108,256 @@ func ElevateProcess(execPath string, args string) error {
 	return nil
 }
 
+```
+## plan.md
+```md
+### **새로운 리팩토링 계획 (Updated plan.md)**  
+(기존 계획에 **패키지별 순차적인 리팩토링 & 통합 테스트 과정**을 반영)
+
+---
+
+# **패키지별 순차적 리팩토링 및 통합 테스트 계획**
+
+## **개요**  
+본 프로젝트의 리팩토링은 **한 패키지씩 점진적으로 변경한 후 기존 코드와 통합하여 빌드 및 테스트를 진행하는 방식**으로 진행된다.  
+이를 통해 **기능 안정성을 유지하면서 점진적으로 리팩토링을 수행**할 수 있다.
+
+### **진행 방식**
+1. 특정 패키지를 리팩토링  
+2. 기존 코드와 통합 후 빌드 및 실행 테스트 진행  
+3. 오류가 없는지 확인 후 다음 패키지 리팩토링으로 진행  
+
+> **⚠️ 리팩토링 원칙:**  
+> - 새로운 개념이 기존 코드와 자연스럽게 연결되도록 **점진적으로 변경**  
+> - 기존 코드가 그대로 동작할 수 있도록 **점진적 도입 방식 (Backward Compatibility)** 활용  
+> - 새롭게 정의된 개념이 기존 코드에서 오류를 유발하지 않도록 **초기에는 내부적으로만 사용 후 점진적 확장**  
+
+---
+
+## **Sprint 1: Logger 도메인 리팩토링 (2주)**
+📌 **목표:**  
+- Logger 객체를 생성하는 단일 지점을 `factory.go`로 이동  
+- 기존 Logger 인터페이스와 호환성 유지  
+
+📌 **변경 사항:**  
+```plaintext
+/internal
+  /logger
+    /domain
+      /entity
+        log_entry.go       # 로그 엔트리 구조체 정의
+        log_level.go       # 로그 레벨 정의 
+      /usecase
+        logger_service.go  # 로깅 서비스 인터페이스
+      /repository
+        log_repository.go  # 로그 저장소 인터페이스
+      /ports
+        logger_port.go     # 현재 Logger 인터페이스와 호환되는 포트 정의
+    /infrastructure
+      file_logger.go      # 파일 기반 로거 구현
+    factory.go           # 로거 생성을 담당하는 팩토리
+```
+
+📌 **검증 단계:**  
+✅ 리팩토링 완료 후 기존 코드와 통합하여 빌드 및 실행 테스트 진행  
+✅ 기존 Logger 기능이 정상적으로 작동하는지 확인  
+✅ 이슈 발생 시 수정 후 다시 통합 테스트  
+
+---
+
+## **Sprint 2: 국제화(i18n) 도메인 리팩토링 (2주)**
+📌 **목표:**  
+- 기존 `LocaleManager`를 `factory.go` 기반으로 변경  
+
+📌 **변경 사항:**  
+```plaintext
+/internal
+  /i18n
+    /domain
+      /entity
+        locale.go          # 로케일 정보 정의
+        message.go         # 메시지 정의
+      /usecase
+        locale_service.go  # 로케일 서비스 인터페이스
+      /repository  
+        message_repo.go    # 메시지 저장소 인터페이스
+      /ports
+        locale_port.go     # 현재 LocaleManager와 호환되는 포트
+    /infrastructure
+      /providers
+        en_provider.go     # 영어 메시지 제공자 
+        ko_provider.go     # 한글 메시지 제공자
+      locale_manager.go    # 새로운 로케일 관리자 구현
+    factory.go           # i18n 생성을 담당하는 팩토리
+```
+
+📌 **검증 단계:**  
+✅ 기존 `i18n` 모듈과 통합하여 다국어 지원이 정상적으로 작동하는지 테스트  
+✅ `ko/en` 언어 변경이 정상적으로 동작하는지 확인  
+✅ 빌드 후 UI 및 메시지 출력 테스트  
+
+---
+
+## **Sprint 3: 파일 및 네트워크 도메인 리팩토링 (3주)**
+📌 **목표:**  
+- `manager.go` 기반 구조를 **도메인 기반 구조로 변경**  
+- 기존 기능과 호환성을 유지하면서 `BackupInfo` 같은 새로운 개념을 점진적으로 도입  
+
+📌 **변경 사항:**  
+```plaintext
+/internal
+  /file
+    /domain
+      /entity
+        file_info.go        # 파일 정보 관련 도메인 엔티티
+      /repository
+        file_repository.go  # 파일 저장소 인터페이스
+      /service
+        file_service.go     # 파일 서비스 인터페이스
+    
+    /infrastructure
+      /repository
+        local_file_repository.go  # 로컬 파일 시스템 저장소 구현체
+      file_manager.go      # 기존 매니저를 인프라 계층으로 이동
+    factory.go      # 파일 매니저 생성 팩토리
+
+  /network
+    /domain
+      /entity
+        server_info.go    # 서버 정보 정의
+        download_info.go  # 다운로드 정보 정의
+      /usecase
+        network_service.go # 네트워크 서비스 인터페이스 
+      /repository
+        network_repo.go   # 네트워크 저장소 인터페이스
+      /ports
+        network_port.go   # 현재 NetworkManager와 호환되는 포트
+    /infrastructure  
+      http_client.go     # HTTP 클라이언트 구현
+    factory.go          # 네트워크 클라이언트 생성 팩토리
+
+```
+
+📌 **검증 단계:**  
+✅ 기존 `file_manager.go` 및 `network_manager.go`와 통합하여 테스트  
+✅ `BackupInfo` 적용이 기존 기능을 깨지 않는지 확인  
+✅ 파일 백업/복원 기능 정상 작동 확인  
+
+---
+
+## **Sprint 4: 해시 및 버전 도메인 리팩토링 (2주)**
+📌 **목표:**  
+- 기존 `hash_manager.go` 및 `version_manager.go`를 도메인 기반으로 재구성  
+- `factory.go` 추가  
+
+📌 **변경 사항:**  
+```plaintext
+/internal
+  /hash
+    /domain
+      /entity
+        hash_info.go     # 해시 정보 정의
+      /usecase
+        hash_service.go  # 해시 서비스 인터페이스
+      /repository
+        hash_repo.go     # 해시 저장소 인터페이스
+      /ports
+        hash_port.go     # 현재 HashManager와 호환되는 포트
+    /infrastructure
+      hash_manager.go    # 새로운 해시 관리자 구현
+    factory.go          # 해시 관리자 생성 팩토리
+
+  /version
+    /domain
+      /entity
+        version_info.go   # 버전 정보 정의
+      /usecase
+        version_service.go # 버전 서비스 인터페이스
+      /repository
+        version_repo.go   # 버전 저장소 인터페이스
+      /ports  
+        version_port.go   # 현재 VersionManager와 호환되는 포트
+    /infrastructure
+      version_manager.go  # 새로운 버전 관리자 구현
+    factory.go          # 버전 관리자 생성 팩토리
+```
+
+📌 **검증 단계:**  
+✅ 기존 코드와 통합하여 버전 검증 및 해시 체크 기능 테스트  
+✅ 해시 검증 및 업데이트 프로세스가 정상적으로 동작하는지 확인  
+
+---
+
+## **Sprint 5: UI 및 테마 도메인 리팩토링 (3주)**
+📌 **목표:**  
+- UI 레이어를 `factory.go` 기반으로 리팩토링  
+- `status_card.go`, `progress_bar.go` 같은 UI 컴포넌트 분리  
+
+```plaintext
+/internal
+  /ui
+    /domain
+      /entity
+        theme_info.go     # 테마 정보 정의
+        window_info.go    # 윈도우 정보 정의
+      /usecase
+        ui_service.go     # UI 서비스 인터페이스
+      /repository
+        ui_repo.go       # UI 저장소 인터페이스
+      /ports
+        ui_port.go       # 현재 UI 관련 인터페이스들과 호환되는 포트
+    /infrastructure
+      /theme
+        light_theme.go   # 라이트 테마 구현
+        dark_theme.go    # 다크 테마 구현
+      /components
+        status_card.go   # 상태 카드 컴포넌트
+        progress_bar.go  # 진행 바 컴포넌트
+      ui_manager.go     # 새로운 UI 관리자 구현
+    factory.go         # UI 컴포넌트 생성 팩토리
+```
+
+📌 **검증 단계:**  
+✅ UI 변경이 기존 업데이트 플로우를 깨지 않는지 확인  
+
+---
+
+## **Sprint 6: 핵심 업데이트 도메인 리팩토링 (2주)**
+📌 **목표:**  
+- `internal/core` 도메인 추가  
+- 업데이트 서비스 `factory.go`로 생성  
+
+```plaintext
+/internal
+  /core
+    /domain
+      /entity
+        update_info.go     # 업데이트 정보 정의
+      /usecase
+        update_service.go  # 업데이트 서비스 인터페이스
+      /repository
+        update_repo.go     # 업데이트 저장소 인터페이스
+    /infrastructure
+      update_manager.go    # 새로운 업데이트 관리자 구현
+    /di
+      container.go        # 의존성 주입 컨테이너
+    /config
+      app_config.go      # 앱 설정
+    factory.go          # 업데이트 서비스 생성 팩토리
+
+  /cmd
+    /dupdater
+      main.go          # 메인 진입점
+```
+
+📌 **검증 단계:**  
+✅ 새로운 업데이트 매니저가 기존 업데이트 프로세스와 충돌하지 않는지 확인  
+
+---
+
+## **결론**
+- 기존 코드와의 **통합 테스트를 포함하는 방식으로 리팩토링**  
+- 한 패키지씩 완료 후 **빌드 및 기능 테스트**  
+- 새로운 개념은 **점진적으로 적용**  
+- **기능 단위 리팩토링 & 점진적 도입 원칙 준수** 🚀
 ```
