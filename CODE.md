@@ -12,7 +12,16 @@ dupdater/
     ├── file/
     │   └── manager.go
     ├── hash/
-    │   └── manager.go
+    │   ├── domain/
+    │   │   ├── entity/
+    │   │   │   └── hash_info.go
+    │   │   ├── repository/
+    │   │   │   └── hash_repo.go
+    │   │   └── usecase/
+    │   │   │   └── hash_service.go
+    │   ├── infrastructure/
+    │   │   └── hash_manager.go
+    │   └── factory.go
     ├── i18n/
     │   ├── domain/
     │   │   ├── entity/
@@ -72,8 +81,16 @@ dupdater/
     │   ├── manager.go
     │   └── resources.go
     └── version/
-    │   ├── manger.go
-    │   └── types.go
+    │   ├── domain/
+    │       ├── entity/
+    │       │   └── version.go
+    │       ├── repository/
+    │       │   └── version_repo.go
+    │       └── usecase/
+    │       │   └── version_service.go
+    │   ├── infrastructure/
+    │       └── version_store.go
+    │   └── factory.go
 ├── pkg/
     └── utils/
     │   ├── count.go
@@ -388,13 +405,12 @@ func runTestMode(i18nManager i18nPort.LocalePort) {
 ## command.md
 ```md
 
-"[패키지명] 패키지를 리팩토링 해줘. 다음 원칙들을 지켜야해:
+[패키지명] 패키지를 리팩토링 해줘. 다음 원칙들을 지켜야해:
 
 1. 기존 인터페이스 유지하면서 내부만 클린 아키텍처로 변경
 2. 새로운 기능 추가하지 않기
 3. 에러 처리와 로깅만 개선
-4. 각 레이어별로 한 파일씩 작성하고 기존 코드와 비교 분석해주기"
-
+4. 각 레이어별로 한 파일씩 작성하고 기존 코드와 비교 분석해주기
 
 1. 도메인 엔티티
 2. repository 인터페이스 
@@ -1201,10 +1217,256 @@ type Logger interface {
 }
 
 ```
-## internal/hash/manager.go
+## internal/hash/domain/entity/hash_info.go
 ```go
-// Package hash는 파일 해시 검증을 담당하는 패키지입니다
+// Package entity는 해시 도메인의 핵심 개념을 정의합니다
+package entity
+
+import (
+	"crypto/sha256"
+	"encoding/base64"
+	"fmt"
+)
+
+// FileHash는 파일의 해시 정보를 담는 도메인 엔티티입니다
+type FileHash struct {
+	Path     string // 파일 경로
+	HashSum  string // 해시 값
+	FileType string // 파일 유형 (파일/디렉토리)
+}
+
+// NewFileHash는 새로운 FileHash 인스턴스를 생성합니다
+func NewFileHash(path string, hashSum string, fileType string) *FileHash {
+	return &FileHash{
+		Path:     path,
+		HashSum:  hashSum,
+		FileType: fileType,
+	}
+}
+
+// Validate는 해시 정보가 유효한지 검증합니다
+func (f *FileHash) Validate() error {
+	if f.Path == "" {
+		return fmt.Errorf("파일 경로가 비어있습니다")
+	}
+	if f.HashSum == "" {
+		return fmt.Errorf("해시값이 비어있습니다")
+	}
+	if f.FileType == "" {
+		return fmt.Errorf("파일 유형이 비어있습니다")
+	}
+	return nil
+}
+
+// HashResult는 해시 계산 결과를 담는 값 객체입니다
+type HashResult struct {
+	Hash []byte
+}
+
+// NewHashResult는 바이트 슬라이스로부터 새로운 HashResult를 생성합니다
+func NewHashResult(hash []byte) *HashResult {
+	return &HashResult{Hash: hash}
+}
+
+// CalculateHash는 데이터의 SHA-256 해시를 계산합니다
+func CalculateHash(data []byte) *HashResult {
+	hash := sha256.Sum256(data)
+	return &HashResult{Hash: hash[:]}
+}
+
+// ToBase64는 해시값을 base64 인코딩된 문자열로 변환합니다
+func (r *HashResult) ToBase64() string {
+	return base64.StdEncoding.EncodeToString(r.Hash)
+}
+
+// Compare는 두 해시값을 비교합니다
+func (r *HashResult) Compare(other *HashResult) bool {
+	if len(r.Hash) != len(other.Hash) {
+		return false
+	}
+	for i := range r.Hash {
+		if r.Hash[i] != other.Hash[i] {
+			return false
+		}
+	}
+	return true
+}
+
+```
+## internal/hash/domain/repository/hash_repo.go
+```go
+package repository
+
+import "github.com/kihyun1998/dupdater/internal/hash/domain/entity"
+
+// HashRepository는 해시 검증을 위한 저장소 인터페이스입니다
+type HashRepository interface {
+	// VerifyFile은 단일 파일의 해시를 검증합니다
+	VerifyFile(filePath string, expectedHash string) error
+
+	// VerifyUpdateFile은 업데이트 파일의 해시를 검증합니다
+	VerifyUpdateFile(filePath string) error
+
+	// VerifyHashSum은 모든 파일의 해시섬을 검증합니다
+	VerifyHashSum() error
+
+	// GetFileHash는 파일의 해시 정보를 조회합니다
+	GetFileHash(filePath string) (*entity.FileHash, error)
+}
+
+// Config는 저장소 설정을 정의합니다
+type Config struct {
+	// CurrentDir은 현재 작업 디렉토리입니다
+	CurrentDir string
+
+	// Logger는 로깅을 위한 인터페이스입니다
+	Logger Logger
+}
+
+// Logger는 로깅을 위한 인터페이스입니다
+type Logger interface {
+	Info(format string, v ...interface{})
+	Error(format string, v ...interface{})
+}
+
+```
+## internal/hash/domain/usecase/hash_service.go
+```go
+// Package usecase는 해시 도메인의 비즈니스 로직을 구현합니다
+package usecase
+
+import (
+	"fmt"
+
+	"github.com/kihyun1998/dupdater/internal/hash/domain/repository"
+)
+
+// HashService는 해시 검증 관련 비즈니스 로직을 구현합니다
+type HashService struct {
+	repo   repository.HashRepository
+	logger repository.Logger
+}
+
+// NewHashService는 새로운 HashService 인스턴스를 생성합니다
+func NewHashService(repo repository.HashRepository, logger repository.Logger) *HashService {
+	return &HashService{
+		repo:   repo,
+		logger: logger,
+	}
+}
+
+// VerifyFile은 단일 파일의 해시를 검증합니다
+func (s *HashService) VerifyFile(filePath string, expectedHash string) error {
+	s.logger.Info("파일 해시 검증 시작: %s", filePath)
+
+	if err := s.repo.VerifyFile(filePath, expectedHash); err != nil {
+		s.logger.Error("파일 해시 검증 실패: %v", err)
+		return fmt.Errorf("파일 해시 검증 실패: %w", err)
+	}
+
+	s.logger.Info("파일 해시 검증 완료: %s", filePath)
+	return nil
+}
+
+// VerifyUpdateFile은 업데이트 파일의 해시를 검증합니다
+func (s *HashService) VerifyUpdateFile(filePath string) error {
+	s.logger.Info("업데이트 파일 해시 검증 시작: %s", filePath)
+
+	if err := s.repo.VerifyUpdateFile(filePath); err != nil {
+		s.logger.Error("업데이트 파일 해시 검증 실패: %v", err)
+		return fmt.Errorf("업데이트 파일 해시 검증 실패: %w", err)
+	}
+
+	s.logger.Info("업데이트 파일 해시 검증 완료: %s", filePath)
+	return nil
+}
+
+// VerifyHashSum은 모든 파일의 해시섬을 검증합니다
+func (s *HashService) VerifyHashSum() error {
+	s.logger.Info("전체 파일 해시섬 검증 시작")
+
+	if err := s.repo.VerifyHashSum(); err != nil {
+		s.logger.Error("전체 파일 해시섬 검증 실패: %v", err)
+		return fmt.Errorf("전체 파일 해시섬 검증 실패: %w", err)
+	}
+
+	s.logger.Info("전체 파일 해시섬 검증 완료")
+	return nil
+}
+
+```
+## internal/hash/factory.go
+```go
+// Package hash는 해시 도메인의 진입점을 제공합니다
 package hash
+
+import (
+	"github.com/kihyun1998/dupdater/internal/hash/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/hash/domain/usecase"
+	"github.com/kihyun1998/dupdater/internal/hash/infrastructure"
+)
+
+// Config는 해시 매니저 생성에 필요한 설정입니다
+type Config struct {
+	Logger     Logger
+	CurrentDir string
+}
+
+// Logger는 로깅을 위한 인터페이스입니다
+type Logger interface {
+	Info(format string, v ...interface{})
+	Error(format string, v ...interface{})
+}
+
+// Manager는 해시 검증을 위한 인터페이스입니다
+type Manager interface {
+	VerifyFile(filePath string, expectedHash string) error
+	VerifyUpdateFile(filePath string) error
+	VerifyHashSum() error
+}
+
+// 실제 구현체
+type manager struct {
+	service *usecase.HashService
+}
+
+// New는 새로운 해시 매니저를 생성합니다
+func New(config Config) (Manager, error) {
+	// 리포지토리 설정
+	repoConfig := &repository.Config{
+		CurrentDir: config.CurrentDir,
+		Logger:     config.Logger,
+	}
+
+	// 해시 매니저 생성
+	repo := infrastructure.NewFileHashManager(repoConfig)
+
+	// 서비스 생성
+	service := usecase.NewHashService(repo, config.Logger)
+
+	return &manager{
+		service: service,
+	}, nil
+}
+
+// 인터페이스 구현
+func (m *manager) VerifyFile(filePath string, expectedHash string) error {
+	return m.service.VerifyFile(filePath, expectedHash)
+}
+
+func (m *manager) VerifyUpdateFile(filePath string) error {
+	return m.service.VerifyUpdateFile(filePath)
+}
+
+func (m *manager) VerifyHashSum() error {
+	return m.service.VerifyHashSum()
+}
+
+```
+## internal/hash/infrastructure/hash_manager.go
+```go
+// Package infrastructure는 해시 도메인의 실제 구현체를 제공합니다
+package infrastructure
 
 import (
 	"bufio"
@@ -1216,44 +1478,29 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/kihyun1998/dupdater/internal/hash/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/hash/domain/repository"
 )
 
-// Manager는 해시 검증을 관리하는 구조체입니다
-type Manager struct {
-	logger     Logger // 로깅을 위한 인터페이스
-	currentDir string // 현재 작업 디렉토리
+// FileHashManager는 파일 시스템 기반의 해시 저장소 구현체입니다
+type FileHashManager struct {
+	config *repository.Config
 }
 
-// Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
-type Config struct {
-	Logger     Logger
-	CurrentDir string // 현재 작업 디렉토리 (기본값: ".")
-}
-
-// FileHash는 파일의 해시 정보를 담는 구조체입니다
-type FileHash struct {
-	FileType string // 파일 타입 (f: 파일, d: 디렉토리)
-	PathHash string // 경로의 해시값
-	DataHash string // 파일 내용의 해시값
-}
-
-// New는 새로운 Manager 인스턴스를 생성합니다
-func New(config Config) (*Manager, error) {
-	if config.CurrentDir == "" {
-		config.CurrentDir = "."
+// NewFileHashManager는 새로운 FileHashManager 인스턴스를 생성합니다
+func NewFileHashManager(config *repository.Config) repository.HashRepository {
+	return &FileHashManager{
+		config: config,
 	}
-
-	return &Manager{
-		logger:     config.Logger,
-		currentDir: config.CurrentDir,
-	}, nil
 }
 
 // VerifyFile은 단일 파일의 해시를 검증합니다
-func (m *Manager) VerifyFile(filePath string, expectedHash string) error {
+func (m *FileHashManager) VerifyFile(filePath string, expectedHash string) error {
+	// 패닉 복구
 	defer func() {
 		if r := recover(); r != nil {
-			m.logger.Error("VerifyFile 함수에서 패닉 발생: %v", r)
+			m.config.Logger.Error("VerifyFile 함수에서 패닉 발생: %v", r)
 		}
 	}()
 
@@ -1277,10 +1524,11 @@ func (m *Manager) VerifyFile(filePath string, expectedHash string) error {
 }
 
 // VerifyUpdateFile은 업데이트 ZIP 파일의 해시를 검증합니다
-func (m *Manager) VerifyUpdateFile(filePath string) error {
+func (m *FileHashManager) VerifyUpdateFile(filePath string) error {
+	// 패닉 복구
 	defer func() {
 		if r := recover(); r != nil {
-			m.logger.Error("VerifyUpdateFile 함수에서 패닉 발생: %v", r)
+			m.config.Logger.Error("VerifyUpdateFile 함수에서 패닉 발생: %v", r)
 		}
 	}()
 
@@ -1318,7 +1566,7 @@ func (m *Manager) VerifyUpdateFile(filePath string) error {
 	calculatedHash := hash.Sum(nil)
 
 	// 해시 비교
-	if !m.compareHashes(calculatedHash, storedHash) {
+	if !compareHashes(calculatedHash, storedHash) {
 		return fmt.Errorf("업데이트 파일 해시 검증 실패")
 	}
 
@@ -1326,14 +1574,15 @@ func (m *Manager) VerifyUpdateFile(filePath string) error {
 }
 
 // VerifyHashSum은 hash_sum.txt 파일의 내용을 검증합니다
-func (m *Manager) VerifyHashSum() error {
+func (m *FileHashManager) VerifyHashSum() error {
+	// 패닉 복구
 	defer func() {
 		if r := recover(); r != nil {
-			m.logger.Error("VerifyHashSum 함수에서 패닉 발생: %v", r)
+			m.config.Logger.Error("VerifyHashSum 함수에서 패닉 발생: %v", r)
 		}
 	}()
 
-	sumFilePath := filepath.Join(m.currentDir, "hash_sum.txt")
+	sumFilePath := filepath.Join(m.config.CurrentDir, "hash_sum.txt")
 	file, err := os.Open(sumFilePath)
 	if err != nil {
 		return fmt.Errorf("hash_sum.txt 파일 열기 실패: %w", err)
@@ -1348,58 +1597,88 @@ func (m *Manager) VerifyHashSum() error {
 			return fmt.Errorf("해시 라인 파싱 실패: %w", err)
 		}
 
-		filePath, err := m.getFilePathFromHash(fileHash.PathHash)
-		if err != nil {
-			return fmt.Errorf("파일 경로 찾기 실패: %w", err)
-		}
-
-		if err := m.VerifyFile(filePath, fileHash.DataHash); err != nil {
-			return fmt.Errorf("파일 검증 실패 (%s): %w", filePath, err)
+		if err := m.VerifyFile(fileHash.Path, fileHash.HashSum); err != nil {
+			return fmt.Errorf("파일 검증 실패 (%s): %w", fileHash.Path, err)
 		}
 	}
 
 	return scanner.Err()
 }
 
-// 내부 헬퍼 함수들
-// parseHashLine는 hash_sum.txt 파일의 한 줄을 파싱합니다
-func (m *Manager) parseHashLine(line string) (FileHash, error) {
-	parts := strings.Split(line, ";")
-	if len(parts) != 3 {
-		return FileHash{}, fmt.Errorf("잘못된 해시 라인 형식: %s", line)
+// GetFileHash는 파일의 해시 정보를 조회합니다
+func (m *FileHashManager) GetFileHash(filePath string) (*entity.FileHash, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("파일 열기 실패: %w", err)
+	}
+	defer file.Close()
+
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("파일 정보 가져오기 실패: %w", err)
 	}
 
-	return FileHash{
-		FileType: parts[0],
-		PathHash: parts[1],
-		DataHash: parts[2],
-	}, nil
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return nil, fmt.Errorf("해시 계산 실패: %w", err)
+	}
+
+	fileType := "f"
+	if fileInfo.IsDir() {
+		fileType = "d"
+	}
+
+	return entity.NewFileHash(
+		filePath,
+		base64.StdEncoding.EncodeToString(hash.Sum(nil)),
+		fileType,
+	), nil
+}
+
+// 내부 헬퍼 함수
+func (m *FileHashManager) parseHashLine(line string) (*entity.FileHash, error) {
+	parts := strings.Split(line, ";")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("잘못된 해시 라인 형식: %s", line)
+	}
+
+	// parts[0]: fileType, parts[1]: pathHash, parts[2]: dataHash
+	filePath, err := m.getFilePathFromHash(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("파일 경로 찾기 실패: %w", err)
+	}
+
+	return entity.NewFileHash(filePath, parts[2], parts[0]), nil
 }
 
 // getFilePathFromHash는 해시값에 해당하는 파일의 경로를 찾습니다
-func (m *Manager) getFilePathFromHash(pathHash string) (string, error) {
+func (m *FileHashManager) getFilePathFromHash(pathHash string) (string, error) {
 	var matchedPath string
 
-	err := filepath.Walk(m.currentDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(m.config.CurrentDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
+		// 디렉토리인 경우 계속 진행
 		if info.IsDir() {
 			return nil
 		}
 
-		relPath, err := filepath.Rel(m.currentDir, path)
+		// 상대 경로로 변환
+		relPath, err := filepath.Rel(m.config.CurrentDir, path)
 		if err != nil {
 			return err
 		}
 
+		// Windows 경로를 Unix 스타일로 변환
 		relPath = filepath.ToSlash(relPath)
-		currentHash, err := m.calculatePathHash(relPath)
-		if err != nil {
-			return err
-		}
 
+		// 경로의 해시값 계산
+		hash := sha256.Sum256([]byte(relPath))
+		currentHash := base64.StdEncoding.EncodeToString(hash[:])
+
+		// 해시값이 일치하면 경로 저장 및 검색 중단
 		if currentHash == pathHash {
 			matchedPath = path
 			return filepath.SkipDir
@@ -1419,30 +1698,16 @@ func (m *Manager) getFilePathFromHash(pathHash string) (string, error) {
 	return matchedPath, nil
 }
 
-// calculatePathHash는 파일 경로의 해시값을 계산합니다
-func (m *Manager) calculatePathHash(relPath string) (string, error) {
-	hash := sha256.Sum256([]byte(relPath))
-	return base64.StdEncoding.EncodeToString(hash[:]), nil
-}
-
-// compareHashes는 두 해시값을 비교합니다
-func (m *Manager) compareHashes(hash1, hash2 []byte) bool {
+func compareHashes(hash1, hash2 []byte) bool {
 	if len(hash1) != len(hash2) {
 		return false
 	}
-
 	for i := range hash1 {
 		if hash1[i] != hash2[i] {
 			return false
 		}
 	}
 	return true
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
 }
 
 ```
@@ -3779,65 +4044,9 @@ func (t *CustomTheme) Size(name fyne.ThemeSizeName) float32 {
 }
 
 ```
-## internal/version/manger.go
+## internal/version/domain/entity/version.go
 ```go
-package version
-
-import "fmt"
-
-// Manager는 버전 관리를 담당하는 구조체입니다
-type Manager struct {
-	logger      Logger
-	fromVersion *Version
-	toVersion   *Version
-}
-
-// Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
-type Config struct {
-	Logger      Logger
-	FromVersion string
-	ToVersion   string
-}
-
-// New는 새로운 Manager 인스턴스를 생성합니다
-func New(config Config) (*Manager, error) {
-	fromVersion, err := ParseVersion(config.FromVersion)
-	if err != nil {
-		return nil, fmt.Errorf("현재 버전 파싱 실패: %w", err)
-	}
-
-	toVersion, err := ParseVersion(config.ToVersion)
-	if err != nil {
-		return nil, fmt.Errorf("대상 버전 파싱 실패: %w", err)
-	}
-
-	return &Manager{
-		logger:      config.Logger,
-		fromVersion: fromVersion,
-		toVersion:   toVersion,
-	}, nil
-}
-
-// GetFromVersion은 현재 버전을 반환합니다
-func (m *Manager) GetFromVersion() string {
-	return m.fromVersion.String()
-}
-
-// GetToVersion은 대상 버전을 반환합니다
-func (m *Manager) GetToVersion() string {
-	return m.toVersion.String()
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
-}
-
-```
-## internal/version/types.go
-```go
-package version
+package entity
 
 import (
 	"fmt"
@@ -3845,16 +4054,27 @@ import (
 	"time"
 )
 
-// Version은 버전 정보를 나타내는 구조체입니다
+// Version은 버전 정보를 나타내는 도메인 엔티티입니다
 type Version struct {
-	Major       int
-	Minor       int
-	Patch       int
-	Date        time.Time
-	FullVersion string // 원본 버전 문자열 저장
+	Major       int       // 주 버전
+	Minor       int       // 부 버전
+	Patch       int       // 패치 버전
+	Date        time.Time // 배포 날짜
+	FullVersion string    // 전체 버전 문자열
 }
 
-// ParseVersion은 문자열을 Version 구조체로 파싱합니다
+// NewVersion은 새로운 Version 엔티티를 생성합니다
+func NewVersion(major, minor, patch int, date time.Time, fullVersion string) *Version {
+	return &Version{
+		Major:       major,
+		Minor:       minor,
+		Patch:       patch,
+		Date:        date,
+		FullVersion: fullVersion,
+	}
+}
+
+// ParseVersion은 문자열을 Version 엔티티로 파싱합니다
 // 예: V3.0.0(2024-01-01)
 func ParseVersion(version string) (*Version, error) {
 	pattern := `^V(\d+)\.(\d+)\.(\d+)\((\d{4}-\d{2}-\d{2})\)$`
@@ -3865,30 +4085,347 @@ func ParseVersion(version string) (*Version, error) {
 		return nil, fmt.Errorf("잘못된 버전 형식: %s (예: V3.0.0(2024-01-01))", version)
 	}
 
-	// Parse version numbers
+	// 버전 번호 파싱
 	var major, minor, patch int
 	fmt.Sscanf(matches[1], "%d", &major)
 	fmt.Sscanf(matches[2], "%d", &minor)
 	fmt.Sscanf(matches[3], "%d", &patch)
 
-	// Parse date
+	// 날짜 파싱
 	date, err := time.Parse("2006-01-02", matches[4])
 	if err != nil {
-		return nil, fmt.Errorf("날짜 파싱 실패: %s", matches[4])
+		return nil, fmt.Errorf("날짜 파싱 실패: %w", err)
 	}
 
-	return &Version{
-		Major:       major,
-		Minor:       minor,
-		Patch:       patch,
-		Date:        date,
-		FullVersion: version,
-	}, nil
+	return NewVersion(major, minor, patch, date, version), nil
 }
 
 // String은 Version을 문자열로 변환합니다
 func (v *Version) String() string {
 	return v.FullVersion
+}
+
+// Equal은 두 Version이 동일한지 비교합니다
+func (v *Version) Equal(other *Version) bool {
+	return v.Major == other.Major &&
+		v.Minor == other.Minor &&
+		v.Patch == other.Patch
+}
+
+// IsNewer는 현재 버전이 다른 버전보다 새로운지 확인합니다
+func (v *Version) IsNewer(other *Version) bool {
+	if v.Major != other.Major {
+		return v.Major > other.Major
+	}
+	if v.Minor != other.Minor {
+		return v.Minor > other.Minor
+	}
+	return v.Patch > other.Patch
+}
+
+// Validate는 버전 정보가 유효한지 검증합니다
+func (v *Version) Validate() error {
+	if v.Major < 0 || v.Minor < 0 || v.Patch < 0 {
+		return fmt.Errorf("버전 번호는 음수일 수 없습니다")
+	}
+	if v.Date.IsZero() {
+		return fmt.Errorf("날짜 정보가 없습니다")
+	}
+	if v.FullVersion == "" {
+		return fmt.Errorf("전체 버전 문자열이 비어있습니다")
+	}
+	return nil
+}
+
+```
+## internal/version/domain/repository/version_repo.go
+```go
+// domain/repository/version_repo.go
+package repository
+
+import "github.com/kihyun1998/dupdater/internal/version/domain/entity"
+
+// VersionRepository는 버전 관리를 위한 저장소 인터페이스입니다
+type VersionRepository interface {
+	// GetFromVersion은 현재 버전 정보를 조회합니다
+	GetFromVersion() *entity.Version
+
+	// GetToVersion은 대상 버전 정보를 조회합니다
+	GetToVersion() *entity.Version
+
+	// SaveFromVersion은 현재 버전 정보를 저장합니다
+	SaveFromVersion(version *entity.Version) error
+
+	// SaveToVersion은 대상 버전 정보를 저장합니다
+	SaveToVersion(version *entity.Version) error
+
+	// ValidateVersions는 버전 정보의 유효성을 검증합니다
+	ValidateVersions() error
+}
+
+// Config는 저장소 설정을 정의합니다
+type Config struct {
+	FromVersion string // 현재 버전
+	ToVersion   string // 대상 버전
+	Logger      Logger // 로거 인터페이스
+}
+
+// Logger는 로깅을 위한 인터페이스입니다
+type Logger interface {
+	Info(format string, v ...interface{})
+	Error(format string, v ...interface{})
+}
+
+```
+## internal/version/domain/usecase/version_service.go
+```go
+// domain/usecase/version_service.go
+package usecase
+
+import (
+	"fmt"
+
+	"github.com/kihyun1998/dupdater/internal/version/domain/repository"
+)
+
+// VersionService는 버전 관리의 비즈니스 로직을 구현합니다
+type VersionService struct {
+	repo   repository.VersionRepository
+	logger repository.Logger
+}
+
+// NewVersionService는 새로운 VersionService 인스턴스를 생성합니다
+func NewVersionService(repo repository.VersionRepository, logger repository.Logger) *VersionService {
+	return &VersionService{
+		repo:   repo,
+		logger: logger,
+	}
+}
+
+// GetFromVersion은 현재 버전을 반환합니다
+func (s *VersionService) GetFromVersion() string {
+	version := s.repo.GetFromVersion()
+	if version == nil {
+		s.logger.Error("현재 버전 정보를 찾을 수 없습니다")
+		return ""
+	}
+	return version.String()
+}
+
+// GetToVersion은 대상 버전을 반환합니다
+func (s *VersionService) GetToVersion() string {
+	version := s.repo.GetToVersion()
+	if version == nil {
+		s.logger.Error("대상 버전 정보를 찾을 수 없습니다")
+		return ""
+	}
+	return version.String()
+}
+
+// ValidateVersions는 버전 정보의 유효성을 검사합니다
+func (s *VersionService) ValidateVersions() error {
+	if err := s.repo.ValidateVersions(); err != nil {
+		s.logger.Error("버전 정보 검증 실패: %v", err)
+		return fmt.Errorf("버전 정보 검증 실패: %w", err)
+	}
+	return nil
+}
+
+// IsUpdateRequired는 업데이트가 필요한지 확인합니다
+func (s *VersionService) IsUpdateRequired() bool {
+	fromVersion := s.repo.GetFromVersion()
+	toVersion := s.repo.GetToVersion()
+
+	if fromVersion == nil || toVersion == nil {
+		s.logger.Error("버전 정보가 없어 업데이트 필요 여부를 확인할 수 없습니다")
+		return false
+	}
+
+	return toVersion.IsNewer(fromVersion)
+}
+
+```
+## internal/version/factory.go
+```go
+package version
+
+import (
+	"github.com/kihyun1998/dupdater/internal/version/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/version/domain/usecase"
+	"github.com/kihyun1998/dupdater/internal/version/infrastructure"
+)
+
+// Manager는 버전 관리를 위한 외부 인터페이스입니다
+type Manager interface {
+	// GetFromVersion은 현재 버전을 반환합니다
+	GetFromVersion() string
+
+	// GetToVersion은 대상 버전을 반환합니다
+	GetToVersion() string
+}
+
+// Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
+type Config struct {
+	Logger      Logger
+	FromVersion string
+	ToVersion   string
+}
+
+// Logger는 로깅을 위한 인터페이스입니다
+type Logger interface {
+	Info(format string, v ...interface{})
+	Error(format string, v ...interface{})
+}
+
+// managerImpl은 Manager 인터페이스의 구현체입니다
+type managerImpl struct {
+	service *usecase.VersionService
+}
+
+// New는 새로운 Manager 인스턴스를 생성합니다
+func New(config Config) (Manager, error) {
+	// 저장소 설정 생성
+	repoConfig := &repository.Config{
+		FromVersion: config.FromVersion,
+		ToVersion:   config.ToVersion,
+		Logger:      config.Logger,
+	}
+
+	// 버전 저장소 생성
+	store, err := infrastructure.NewVersionStore(repoConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// 버전 서비스 생성
+	service := usecase.NewVersionService(store, config.Logger)
+
+	// 버전 정보 유효성 검증
+	if err := service.ValidateVersions(); err != nil {
+		return nil, err
+	}
+
+	return &managerImpl{
+		service: service,
+	}, nil
+}
+
+// GetFromVersion은 현재 버전을 반환합니다
+func (m *managerImpl) GetFromVersion() string {
+	return m.service.GetFromVersion()
+}
+
+// GetToVersion은 대상 버전을 반환합니다
+func (m *managerImpl) GetToVersion() string {
+	return m.service.GetToVersion()
+}
+
+```
+## internal/version/infrastructure/version_store.go
+```go
+// infrastructure/version_store.go
+package infrastructure
+
+import (
+	"fmt"
+	"sync"
+
+	"github.com/kihyun1998/dupdater/internal/version/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/version/domain/repository"
+)
+
+// VersionStore는 버전 정보를 관리하는 저장소 구현체입니다
+type VersionStore struct {
+	fromVersion *entity.Version
+	toVersion   *entity.Version
+	logger      repository.Logger
+	mu          sync.RWMutex
+}
+
+// NewVersionStore는 새로운 VersionStore 인스턴스를 생성합니다
+func NewVersionStore(config *repository.Config) (*VersionStore, error) {
+	fromVersion, err := entity.ParseVersion(config.FromVersion)
+	if err != nil {
+		return nil, fmt.Errorf("현재 버전 파싱 실패: %w", err)
+	}
+
+	toVersion, err := entity.ParseVersion(config.ToVersion)
+	if err != nil {
+		return nil, fmt.Errorf("대상 버전 파싱 실패: %w", err)
+	}
+
+	return &VersionStore{
+		fromVersion: fromVersion,
+		toVersion:   toVersion,
+		logger:      config.Logger,
+	}, nil
+}
+
+// GetFromVersion은 현재 버전을 반환합니다
+func (s *VersionStore) GetFromVersion() *entity.Version {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.fromVersion
+}
+
+// GetToVersion은 대상 버전을 반환합니다
+func (s *VersionStore) GetToVersion() *entity.Version {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.toVersion
+}
+
+// SaveFromVersion은 현재 버전을 저장합니다
+func (s *VersionStore) SaveFromVersion(version *entity.Version) error {
+	if err := version.Validate(); err != nil {
+		return fmt.Errorf("현재 버전 검증 실패: %w", err)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.fromVersion = version
+	s.logger.Info("현재 버전이 업데이트됨: %s", version.String())
+	return nil
+}
+
+// SaveToVersion은 대상 버전을 저장합니다
+func (s *VersionStore) SaveToVersion(version *entity.Version) error {
+	if err := version.Validate(); err != nil {
+		return fmt.Errorf("대상 버전 검증 실패: %w", err)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.toVersion = version
+	s.logger.Info("대상 버전이 업데이트됨: %s", version.String())
+	return nil
+}
+
+// ValidateVersions는 버전 정보의 유효성을 검증합니다
+func (s *VersionStore) ValidateVersions() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.fromVersion == nil || s.toVersion == nil {
+		return fmt.Errorf("버전 정보가 초기화되지 않았습니다")
+	}
+
+	if err := s.fromVersion.Validate(); err != nil {
+		return fmt.Errorf("현재 버전 검증 실패: %w", err)
+	}
+
+	if err := s.toVersion.Validate(); err != nil {
+		return fmt.Errorf("대상 버전 검증 실패: %w", err)
+	}
+
+	if !s.toVersion.IsNewer(s.fromVersion) {
+		return fmt.Errorf("대상 버전(%s)이 현재 버전(%s)보다 낮거나 같습니다",
+			s.toVersion.String(), s.fromVersion.String())
+	}
+
+	return nil
 }
 
 ```
