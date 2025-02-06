@@ -10,6 +10,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/file"
 	"github.com/kihyun1998/dupdater/internal/hash"
 	"github.com/kihyun1998/dupdater/internal/i18n"
+	i18nPort "github.com/kihyun1998/dupdater/internal/i18n/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/logger"
 	logEntity "github.com/kihyun1998/dupdater/internal/logger/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/network"
@@ -44,14 +45,13 @@ func main() {
 	}
 
 	// 3. i18n 매니저 초기화
-	i18nManager, err := i18n.New(i18n.Config{
+	i18nManager, err := i18n.New(i18nPort.LocaleConfig{
 		DefaultLang: *langMode,
 	})
 	if err != nil {
 		fmt.Printf("다국어 지원 초기화 실패: %v\n", err)
 		os.Exit(1)
 	}
-
 	// 테스트 모드 체크
 	if *testMode {
 		runTestMode(i18nManager)
@@ -172,7 +172,7 @@ func getCurrentDir() string {
 }
 
 // runTestMode는 UI 테스트를 위한 모드를 실행합니다
-func runTestMode(i18nManager i18n.LocaleManager) {
+func runTestMode(i18nManager i18nPort.LocalePort) {
 	// 로거 초기화
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{

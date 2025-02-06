@@ -14,11 +14,25 @@ dupdater/
     ├── hash/
     │   └── manager.go
     ├── i18n/
+    │   ├── domain/
+    │   │   ├── entity/
+    │   │   │   ├── locale.go
+    │   │   │   └── message.go
+    │   │   ├── ports/
+    │   │   │   └── locale_port.go
+    │   │   ├── repository/
+    │   │   │   └── message_repo.go
+    │   │   └── usecase/
+    │   │   │   └── locale_service.go
+    │   ├── infrastructure/
+    │   │   ├── providers/
+    │   │   │   ├── en_provider.go
+    │   │   │   └── ko_provider.go
+    │   │   └── message_store.go
     │   ├── locale/
     │   │   ├── en.go
     │   │   └── ko.go
-    │   ├── manager.go
-    │   └── types.go
+    │   └── factory.go
     ├── logger/
     │   ├── domain/
     │   │   ├── entity/
@@ -154,6 +168,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/file"
 	"github.com/kihyun1998/dupdater/internal/hash"
 	"github.com/kihyun1998/dupdater/internal/i18n"
+	i18nPort "github.com/kihyun1998/dupdater/internal/i18n/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/logger"
 	logEntity "github.com/kihyun1998/dupdater/internal/logger/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/network"
@@ -188,14 +203,13 @@ func main() {
 	}
 
 	// 3. i18n 매니저 초기화
-	i18nManager, err := i18n.New(i18n.Config{
+	i18nManager, err := i18n.New(i18nPort.LocaleConfig{
 		DefaultLang: *langMode,
 	})
 	if err != nil {
 		fmt.Printf("다국어 지원 초기화 실패: %v\n", err)
 		os.Exit(1)
 	}
-
 	// 테스트 모드 체크
 	if *testMode {
 		runTestMode(i18nManager)
@@ -316,7 +330,7 @@ func getCurrentDir() string {
 }
 
 // runTestMode는 UI 테스트를 위한 모드를 실행합니다
-func runTestMode(i18nManager i18n.LocaleManager) {
+func runTestMode(i18nManager i18nPort.LocalePort) {
 	// 로거 초기화
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
@@ -384,10 +398,11 @@ const (
 // Updater는 업데이트 프로세스의 전체 흐름을 제어하는 구조체입니다
 type Updater struct {
 	// 기본 설정
-	appName         string // 업데이트할 애플리케이션의 이름
-	fromVersion     string // 현재 애플리케이션의 버전
-	serverName      string // 서버 프로필 이름
-	backupCompleted bool   // 백업 상태 추적을 위한 필드 추가
+	appName          string // 업데이트할 애플리케이션의 이름
+	fromVersion      string // 현재 애플리케이션의 버전
+	serverName       string // 서버 프로필 이름
+	backupCompleted  bool   // 백업 상태 추적을 위한 필드
+	restoreCompleted bool   // 복원 상태 추적을 위한 필드
 
 	// 의존성들
 	ui          UIManager      // UI 관리자
@@ -403,29 +418,31 @@ type Updater struct {
 
 // Config는 새로운 Updater를 생성할 때 필요한 설정을 담는 구조체입니다
 type Config struct {
-	AppName         string
-	FromVersion     string
-	ServerName      string
-	BackupCompleted bool
-	UIManager       UIManager
-	Logger          Logger
-	NetworkManager  NetworkManager
-	FileManager     FileManager
-	HashManager     HashManager
+	AppName          string
+	FromVersion      string
+	ServerName       string
+	BackupCompleted  bool
+	RestoreCompleted bool
+	UIManager        UIManager
+	Logger           Logger
+	NetworkManager   NetworkManager
+	FileManager      FileManager
+	HashManager      HashManager
 }
 
 // New는 새로운 Updater 인스턴스를 생성합니다
 func New(config Config) *Updater {
 	return &Updater{
-		appName:         config.AppName,
-		fromVersion:     config.FromVersion,
-		serverName:      config.ServerName,
-		backupCompleted: config.BackupCompleted,
-		ui:              config.UIManager,
-		logger:          config.Logger,
-		network:         config.NetworkManager,
-		fileManager:     config.FileManager,
-		hashManager:     config.HashManager,
+		appName:          config.AppName,
+		fromVersion:      config.FromVersion,
+		serverName:       config.ServerName,
+		backupCompleted:  config.BackupCompleted,
+		restoreCompleted: config.RestoreCompleted,
+		ui:               config.UIManager,
+		logger:           config.Logger,
+		network:          config.NetworkManager,
+		fileManager:      config.FileManager,
+		hashManager:      config.HashManager,
 	}
 }
 
@@ -658,11 +675,18 @@ func (u *Updater) restartAfterRestore() error {
 }
 
 func (u *Updater) restoreFiles() error {
+	if u.restoreCompleted {
+		u.logger.Error("restoreFiles()가 중복 실행되려 했으나, 이미 복원이 완료된 상태입니다. 중단함.")
+		return nil
+	}
+
 	u.logger.Info("파일 복원 시작")
 	if err := u.fileManager.Restore(); err != nil {
 		u.logger.Error("파일 복원 실패: %v", err)
 		return err
 	}
+
+	u.restoreCompleted = true
 
 	// 복원 후 디렉토리 확인
 	files, err := os.ReadDir(u.fileManager.GetBackupDir())
@@ -680,7 +704,7 @@ func (u *Updater) restoreFiles() error {
 func (u *Updater) handleError(message string, err error) error {
 	u.logger.Error("%s: %v", message, err)
 
-	if u.backupCompleted {
+	if u.backupCompleted && !u.restoreCompleted {
 		u.ui.ShowRestoring()
 		if restoreErr := u.restoreFiles(); restoreErr != nil {
 			u.logger.Error("파일 복원 실패: %v", restoreErr)
@@ -694,6 +718,9 @@ func (u *Updater) handleError(message string, err error) error {
 		} else {
 			u.logger.Info("복원 완료 후 백업 디렉토리 유지됨: %s", u.fileManager.GetBackupDir())
 		}
+
+		// 복원 완료시 복원 완료 상태 저장
+		u.restoreCompleted = true
 
 		// 복원 성공 시 애플리케이션 재시작 추가
 		u.logger.Info("복원이 완료됨. 애플리케이션을 재시작합니다...")
@@ -1388,6 +1415,551 @@ type Logger interface {
 }
 
 ```
+## internal/i18n/domain/entity/locale.go
+```go
+package entity
+
+// Language는 지원되는 언어 코드를 정의합니다
+type Language string
+
+const (
+	// Korean 한국어
+	Korean Language = "ko"
+
+	// English 영어
+	English Language = "en"
+
+	// DefaultLanguage 기본 언어를 한국어로 설정
+	DefaultLanguage = Korean
+)
+
+// Locale은 로케일 정보를 나타내는 구조체입니다
+type Locale struct {
+	// Code는 언어 코드입니다 (예: "ko", "en")
+	Code Language
+
+	// Name은 해당 언어의 표시 이름입니다
+	Name string
+}
+
+// NewLocale은 새로운 Locale 인스턴스를 생성합니다
+func NewLocale(code Language, name string) *Locale {
+	return &Locale{
+		Code: code,
+		Name: name,
+	}
+}
+
+// IsValid는 로케일이 유효한지 검증합니다
+func (l *Locale) IsValid() bool {
+	switch l.Code {
+	case Korean, English:
+		return true
+	default:
+		return false
+	}
+}
+
+// String은 로케일의 문자열 표현을 반환합니다
+func (l *Locale) String() string {
+	return string(l.Code)
+}
+
+```
+## internal/i18n/domain/entity/message.go
+```go
+package entity
+
+// Message는 다국어 메시지를 나타내는 구조체입니다
+type Message struct {
+	// Key는 메시지의 고유 식별자입니다
+	Key string
+
+	// Value는 해당 언어로 번역된 메시지 내용입니다
+	Value string
+
+	// Locale은 메시지가 속한 로케일 정보입니다
+	Locale *Locale
+}
+
+// NewMessage는 새로운 Message 인스턴스를 생성합니다
+func NewMessage(key string, value string, locale *Locale) *Message {
+	return &Message{
+		Key:    key,
+		Value:  value,
+		Locale: locale,
+	}
+}
+
+// IsValid는 메시지가 유효한지 검증합니다
+func (m *Message) IsValid() bool {
+	return m.Key != "" &&
+		m.Value != "" &&
+		m.Locale != nil &&
+		m.Locale.IsValid()
+}
+
+// MessageMap은 메시지 키-값 쌍의 맵을 나타냅니다
+type MessageMap map[string]string
+
+// MessageProvider는 특정 로케일의 메시지를 제공하는 인터페이스입니다
+type MessageProvider interface {
+	// GetLanguageCode는 제공자가 지원하는 언어 코드를 반환합니다
+	GetLanguageCode() string
+
+	// GetMessages는 해당 언어의 전체 메시지 맵을 반환합니다
+	GetMessages() MessageMap
+}
+
+```
+## internal/i18n/domain/ports/locale_port.go
+```go
+// Package ports는 i18n 도메인의 외부 인터페이스를 정의합니다
+package ports
+
+import "github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
+
+// LocalePort는 i18n 시스템의 외부 인터페이스를 정의합니다
+type LocalePort interface {
+	// SetLanguage는 현재 언어를 설정합니다
+	SetLanguage(lang string) error
+
+	// GetMessage는 지정된 키에 해당하는 메시지를 현재 설정된 언어로 반환합니다
+	GetMessage(key string) string
+
+	// GetCurrentLanguage는 현재 설정된 언어를 반환합니다
+	GetCurrentLanguage() string
+
+	// RegisterProvider는 새로운 메시지 제공자를 등록합니다
+	RegisterProvider(provider entity.MessageProvider) error
+}
+
+// LocaleConfig는 로케일 초기화에 필요한 설정을 정의합니다
+type LocaleConfig struct {
+	// DefaultLang은 기본 언어 설정입니다
+	DefaultLang string
+}
+
+// Validate는 설정이 유효한지 검증합니다
+func (c *LocaleConfig) Validate() error {
+	if c.DefaultLang == "" {
+		c.DefaultLang = string(entity.DefaultLanguage)
+	}
+	return nil
+}
+
+```
+## internal/i18n/domain/repository/message_repo.go
+```go
+package repository
+
+import (
+	"fmt"
+
+	"github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
+)
+
+// MessageRepository는 메시지 저장소의 인터페이스를 정의합니다
+type MessageRepository interface {
+	// GetMessage는 주어진 키와 로케일에 해당하는 메시지를 조회합니다
+	GetMessage(key string, locale *entity.Locale) (*entity.Message, error)
+
+	// GetAllMessages는 특정 로케일의 모든 메시지를 조회합니다
+	GetAllMessages(locale *entity.Locale) (entity.MessageMap, error)
+
+	// RegisterProvider는 새로운 메시지 제공자를 등록합니다
+	RegisterProvider(provider entity.MessageProvider) error
+}
+
+// Config는 저장소 설정을 정의합니다
+type Config struct {
+	// DefaultLocale은 기본 로케일 설정입니다
+	DefaultLocale *entity.Locale
+}
+
+// NewConfig는 새로운 저장소 설정을 생성합니다
+func NewConfig(defaultLocale *entity.Locale) *Config {
+	return &Config{
+		DefaultLocale: defaultLocale,
+	}
+}
+
+// Validate는 설정이 유효한지 검증합니다
+func (c *Config) Validate() error {
+	if c.DefaultLocale == nil || !c.DefaultLocale.IsValid() {
+		return fmt.Errorf("유효하지 않은 기본 로케일 설정")
+	}
+	return nil
+}
+
+```
+## internal/i18n/domain/usecase/locale_service.go
+```go
+// Package usecase는 i18n 도메인의 비즈니스 로직을 구현합니다
+package usecase
+
+import (
+	"fmt"
+	"sync"
+
+	"github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/i18n/domain/repository"
+)
+
+// LocaleService는 로케일 관련 비즈니스 로직을 구현합니다
+type LocaleService struct {
+	currentLang string
+	mutex       sync.RWMutex
+	repository  repository.MessageRepository
+}
+
+// NewLocaleService는 새로운 LocaleService 인스턴스를 생성합니다
+func NewLocaleService(repo repository.MessageRepository, defaultLang string) *LocaleService {
+	return &LocaleService{
+		currentLang: defaultLang,
+		repository:  repo,
+	}
+}
+
+// SetLanguage는 현재 언어를 설정합니다
+func (s *LocaleService) SetLanguage(lang string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	locale := entity.NewLocale(entity.Language(lang), "")
+	if !locale.IsValid() {
+		return fmt.Errorf("지원하지 않는 언어입니다: %s", lang)
+	}
+
+	// 해당 언어의 메시지가 존재하는지 확인
+	_, err := s.repository.GetAllMessages(locale)
+	if err != nil {
+		return fmt.Errorf("언어 리소스를 찾을 수 없습니다: %s", lang)
+	}
+
+	s.currentLang = lang
+	return nil
+}
+
+// GetMessage는 지정된 키에 해당하는 메시지를 현재 설정된 언어로 반환합니다
+func (s *LocaleService) GetMessage(key string) string {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	locale := entity.NewLocale(entity.Language(s.currentLang), "")
+	message, err := s.repository.GetMessage(key, locale)
+	if err != nil || message == nil {
+		return key // 메시지를 찾을 수 없는 경우 키를 반환
+	}
+
+	return message.Value
+}
+
+// GetCurrentLanguage는 현재 설정된 언어를 반환합니다
+func (s *LocaleService) GetCurrentLanguage() string {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return s.currentLang
+}
+
+// RegisterProvider는 새로운 메시지 제공자를 등록합니다
+func (s *LocaleService) RegisterProvider(provider entity.MessageProvider) error {
+	return s.repository.RegisterProvider(provider)
+}
+
+```
+## internal/i18n/factory.go
+```go
+// Package i18n은 다국어 지원 시스템의 진입점을 제공합니다
+package i18n
+
+import (
+	"fmt"
+
+	"github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/i18n/domain/ports"
+	"github.com/kihyun1998/dupdater/internal/i18n/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/i18n/domain/usecase"
+	"github.com/kihyun1998/dupdater/internal/i18n/infrastructure"
+	"github.com/kihyun1998/dupdater/internal/i18n/infrastructure/providers"
+)
+
+// Factory는 i18n 시스템의 컴포넌트들을 생성하고 관리합니다
+type Factory struct {
+	config *ports.LocaleConfig
+}
+
+// NewFactory는 새로운 Factory 인스턴스를 생성합니다
+func NewFactory(config *ports.LocaleConfig) (*Factory, error) {
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("설정 검증 실패: %w", err)
+	}
+
+	return &Factory{
+		config: config,
+	}, nil
+}
+
+// Create는 i18n 시스템의 인스턴스를 생성하고 초기화합니다
+func (f *Factory) Create() (ports.LocalePort, error) {
+	// 1. 저장소 설정 생성
+	repoConfig := &repository.Config{
+		DefaultLocale: entity.NewLocale(entity.Language(f.config.DefaultLang), "Default"),
+	}
+
+	// 2. 메시지 저장소 생성
+	messageStore, err := infrastructure.NewMessageStore(repoConfig)
+	if err != nil {
+		return nil, fmt.Errorf("메시지 저장소 생성 실패: %w", err)
+	}
+
+	// 3. 기본 메시지 제공자 등록
+	providers := []entity.MessageProvider{
+		providers.NewKoreanProvider(),
+		providers.NewEnglishProvider(),
+	}
+
+	for _, provider := range providers {
+		if err := messageStore.RegisterProvider(provider); err != nil {
+			return nil, fmt.Errorf("메시지 제공자 등록 실패: %w", err)
+		}
+	}
+
+	// 4. 로케일 서비스 생성
+	localeService := usecase.NewLocaleService(messageStore, f.config.DefaultLang)
+
+	// 5. 초기 언어 설정
+	if err := localeService.SetLanguage(f.config.DefaultLang); err != nil {
+		return nil, fmt.Errorf("초기 언어 설정 실패: %w", err)
+	}
+
+	return localeService, nil
+}
+
+// New는 i18n 시스템의 새 인스턴스를 생성하는 편의 함수입니다
+func New(config ports.LocaleConfig) (ports.LocalePort, error) {
+	factory, err := NewFactory(&config)
+	if err != nil {
+		return nil, err
+	}
+	return factory.Create()
+}
+
+```
+## internal/i18n/infrastructure/message_store.go
+```go
+// Package infrastructure는 i18n 도메인의 실제 구현체들을 제공합니다
+package infrastructure
+
+import (
+	"fmt"
+	"sync"
+
+	"github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/i18n/domain/repository"
+)
+
+// MessageStore는 메모리 기반 메시지 저장소입니다
+type MessageStore struct {
+	mutex    sync.RWMutex
+	messages map[string]entity.MessageMap // locale code -> message map
+	config   *repository.Config
+}
+
+// NewMessageStore는 새로운 MessageStore 인스턴스를 생성합니다
+func NewMessageStore(config *repository.Config) (*MessageStore, error) {
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("저장소 설정 검증 실패: %w", err)
+	}
+
+	return &MessageStore{
+		messages: make(map[string]entity.MessageMap),
+		config:   config,
+	}, nil
+}
+
+// GetMessage는 주어진 키와 로케일에 해당하는 메시지를 조회합니다
+func (s *MessageStore) GetMessage(key string, locale *entity.Locale) (*entity.Message, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	if !locale.IsValid() {
+		return nil, fmt.Errorf("유효하지 않은 로케일: %s", locale.String())
+	}
+
+	messageMap, exists := s.messages[locale.String()]
+	if !exists {
+		return nil, fmt.Errorf("로케일에 대한 메시지가 없음: %s", locale.String())
+	}
+
+	value, exists := messageMap[key]
+	if !exists {
+		return nil, fmt.Errorf("메시지를 찾을 수 없음: %s", key)
+	}
+
+	return entity.NewMessage(key, value, locale), nil
+}
+
+// GetAllMessages는 특정 로케일의 모든 메시지를 조회합니다
+func (s *MessageStore) GetAllMessages(locale *entity.Locale) (entity.MessageMap, error) {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	if !locale.IsValid() {
+		return nil, fmt.Errorf("유효하지 않은 로케일: %s", locale.String())
+	}
+
+	messageMap, exists := s.messages[locale.String()]
+	if !exists {
+		return nil, fmt.Errorf("로케일에 대한 메시지가 없음: %s", locale.String())
+	}
+
+	// 메시지 맵 복사
+	result := make(entity.MessageMap)
+	for k, v := range messageMap {
+		result[k] = v
+	}
+
+	return result, nil
+}
+
+// RegisterProvider는 새로운 메시지 제공자를 등록합니다
+func (s *MessageStore) RegisterProvider(provider entity.MessageProvider) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	langCode := provider.GetLanguageCode()
+	locale := entity.NewLocale(entity.Language(langCode), "")
+
+	if !locale.IsValid() {
+		return fmt.Errorf("지원하지 않는 언어 코드: %s", langCode)
+	}
+
+	// 메시지 맵 등록
+	s.messages[langCode] = provider.GetMessages()
+	return nil
+}
+
+```
+## internal/i18n/infrastructure/providers/en_provider.go
+```go
+// Package providers는 각 언어별 메시지 제공자를 구현합니다
+package providers
+
+import "github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
+
+// EnglishProvider는 영어 메시지를 제공하는 구조체입니다
+type EnglishProvider struct{}
+
+// NewEnglishProvider는 새로운 EnglishProvider 인스턴스를 생성합니다
+func NewEnglishProvider() *EnglishProvider {
+	return &EnglishProvider{}
+}
+
+// GetLanguageCode는 언어 코드를 반환합니다
+func (p *EnglishProvider) GetLanguageCode() string {
+	return string(entity.English)
+}
+
+// GetMessages는 영어 메시지 맵을 반환합니다
+func (p *EnglishProvider) GetMessages() entity.MessageMap {
+	return entity.MessageMap{
+		// Update Status Messages
+		"update.status.checking":     "Checking application status...",
+		"update.status.getting_info": "Getting update information...",
+		"update.status.preparing":    "Preparing update files...",
+		"update.status.downloading":  "Downloading update files...",
+		"update.status.verifying":    "Verifying update files...",
+		"update.status.installing":   "Installing update...",
+		"update.status.finalizing":   "Finalizing installation...",
+		"update.status.completed":    "Update completed.",
+
+		// Titles and Headers
+		"update.title":             "Update",
+		"update.header.new_update": "New Update Available",
+		"update.header.version":    "Version",
+
+		// Progress Status
+		"update.progress.downloading": "Downloading...",
+		"update.progress.percentage":  "%d%%",
+
+		// Error Messages
+		"update.error.generic":      "An error occurred during update",
+		"update.error.connection":   "Failed to connect to server",
+		"update.error.download":     "Failed to download file",
+		"update.error.verification": "File verification failed",
+
+		// Restoration Related
+		"update.restore.in_progress": "Restoring previous version...",
+		"update.restore.completed":   "Restoration completed",
+
+		// Others
+		"update.info.restart":    "The application will restart automatically after update.",
+		"update.button.minimize": "Minimize",
+		"update.button.close":    "Close",
+	}
+}
+
+```
+## internal/i18n/infrastructure/providers/ko_provider.go
+```go
+package providers
+
+import "github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
+
+// KoreanProvider는 한국어 메시지를 제공하는 구조체입니다
+type KoreanProvider struct{}
+
+// NewKoreanProvider는 새로운 KoreanProvider 인스턴스를 생성합니다
+func NewKoreanProvider() *KoreanProvider {
+	return &KoreanProvider{}
+}
+
+// GetLanguageCode는 언어 코드를 반환합니다
+func (p *KoreanProvider) GetLanguageCode() string {
+	return string(entity.Korean)
+}
+
+// GetMessages는 한국어 메시지 맵을 반환합니다
+func (p *KoreanProvider) GetMessages() entity.MessageMap {
+	return entity.MessageMap{
+		// 업데이트 상태 메시지
+		"update.status.checking":     "앱 상태를 확인하고 있습니다...",
+		"update.status.getting_info": "업데이트 정보를 확인하고 있습니다...",
+		"update.status.preparing":    "업데이트 파일을 준비하고 있습니다...",
+		"update.status.downloading":  "업데이트 파일을 다운로드하고 있습니다...",
+		"update.status.verifying":    "업데이트 파일을 검증하고 있습니다...",
+		"update.status.installing":   "업데이트를 설치하고 있습니다...",
+		"update.status.finalizing":   "설치를 확인하고 있습니다...",
+		"update.status.completed":    "업데이트가 완료되었습니다.",
+
+		// 타이틀 및 헤더
+		"update.title":             "업데이트",
+		"update.header.new_update": "새로운 업데이트가 있습니다",
+		"update.header.version":    "버전",
+
+		// 진행 상태
+		"update.progress.downloading": "다운로드 중...",
+		"update.progress.percentage":  "%d%%",
+
+		// 에러 메시지
+		"update.error.generic":      "업데이트 중 오류가 발생했습니다",
+		"update.error.connection":   "서버 연결에 실패했습니다",
+		"update.error.download":     "파일 다운로드에 실패했습니다",
+		"update.error.verification": "파일 검증에 실패했습니다",
+
+		// 복원 관련
+		"update.restore.in_progress": "이전 버전으로 복원 중...",
+		"update.restore.completed":   "복원이 완료되었습니다",
+
+		// 기타
+		"update.info.restart":    "업데이트가 완료되면 자동으로 앱이 다시 시작됩니다.",
+		"update.button.minimize": "최소화",
+		"update.button.close":    "닫기",
+	}
+}
+
+```
 ## internal/i18n/locale/en.go
 ```go
 package locale
@@ -1488,163 +2060,6 @@ func (p *KoreanProvider) GetMessages() map[string]string {
 		"update.info.restart":    "업데이트가 완료되면 자동으로 앱이 다시 시작됩니다.",
 		"update.button.minimize": "최소화",
 		"update.button.close":    "닫기",
-	}
-}
-
-```
-## internal/i18n/manager.go
-```go
-package i18n
-
-import (
-	"fmt"
-	"sync"
-
-	"github.com/kihyun1998/dupdater/internal/i18n/locale"
-)
-
-// Manager는 다국어 지원을 관리하는 구조체입니다
-type Manager struct {
-	currentLang string
-	messages    map[string]map[string]string
-	mutex       sync.RWMutex
-	providers   map[string]MessageProvider
-}
-
-// Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
-type Config struct {
-	DefaultLang string
-}
-
-// New는 새로운 Manager 인스턴스를 생성합니다
-func New(config Config) (*Manager, error) {
-	if config.DefaultLang == "" {
-		config.DefaultLang = string(DefaultLanguage)
-	}
-
-	m := &Manager{
-		messages:  make(map[string]map[string]string),
-		providers: make(map[string]MessageProvider),
-	}
-
-	// 기본 제공자 등록
-	m.RegisterProvider(&locale.KoreanProvider{})
-	m.RegisterProvider(&locale.EnglishProvider{})
-
-	// 기본 언어 설정
-	if err := m.SetLanguage(config.DefaultLang); err != nil {
-		return nil, err
-	}
-
-	return m, nil
-}
-
-// RegisterProvider는 새로운 메시지 제공자를 등록합니다
-func (m *Manager) RegisterProvider(provider MessageProvider) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	langCode := provider.GetLanguageCode()
-	m.providers[langCode] = provider
-	m.messages[langCode] = provider.GetMessages()
-}
-
-// SetLanguage는 현재 언어를 설정합니다
-func (m *Manager) SetLanguage(lang string) error {
-	if !IsValidLanguage(lang) {
-		return fmt.Errorf("지원하지 않는 언어입니다: %s", lang)
-	}
-
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-
-	if _, exists := m.messages[lang]; !exists {
-		return fmt.Errorf("언어 리소스를 찾을 수 없습니다: %s", lang)
-	}
-
-	m.currentLang = lang
-	return nil
-}
-
-// GetMessage는 지정된 키에 해당하는 메시지를 현재 설정된 언어로 반환합니다
-func (m *Manager) GetMessage(key string) string {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	if messages, exists := m.messages[m.currentLang]; exists {
-		if msg, ok := messages[key]; ok {
-			return msg
-		}
-	}
-
-	// 메시지를 찾을 수 없는 경우 키를 반환
-	return key
-}
-
-// GetCurrentLanguage는 현재 설정된 언어를 반환합니다
-func (m *Manager) GetCurrentLanguage() string {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-
-	return m.currentLang
-}
-
-// formatMessage는 메시지에 인자를 적용합니다
-func (m *Manager) formatMessage(message string, args ...interface{}) string {
-	if len(args) > 0 {
-		return fmt.Sprintf(message, args...)
-	}
-	return message
-}
-
-```
-## internal/i18n/types.go
-```go
-// Package i18n은 다국어 지원을 위한 패키지입니다
-package i18n
-
-// LocaleManager는 다국어 지원을 위한 인터페이스입니다
-type LocaleManager interface {
-	// SetLanguage는 현재 언어를 설정합니다
-	SetLanguage(lang string) error
-
-	// GetMessage는 지정된 키에 해당하는 메시지를 현재 설정된 언어로 반환합니다
-	GetMessage(key string) string
-
-	// GetCurrentLanguage는 현재 설정된 언어를 반환합니다
-	GetCurrentLanguage() string
-}
-
-// MessageProvider는 각 언어별 메시지를 제공하는 인터페이스입니다
-type MessageProvider interface {
-	// GetMessages는 해당 언어의 모든 메시지를 반환합니다
-	GetMessages() map[string]string
-
-	// GetLanguageCode는 해당 언어의 코드를 반환합니다 (예: "ko", "en")
-	GetLanguageCode() string
-}
-
-// Language는 지원되는 언어 코드를 정의합니다
-type Language string
-
-const (
-	// Korean 한국어
-	Korean Language = "ko"
-
-	// English 영어
-	English Language = "en"
-
-	// DefaultLanguage 기본 언어
-	DefaultLanguage = Korean
-)
-
-// IsValidLanguage는 주어진 언어 코드가 유효한지 검사합니다
-func IsValidLanguage(lang string) bool {
-	switch Language(lang) {
-	case Korean, English:
-		return true
-	default:
-		return false
 	}
 }
 
@@ -2357,7 +2772,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"github.com/kihyun1998/dupdater/internal/i18n"
+	i18nPort "github.com/kihyun1998/dupdater/internal/i18n/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
 )
 
@@ -2370,7 +2785,7 @@ type StatusCard struct {
 	progressBar  *widget.ProgressBar
 	subtitleText *canvas.Text
 	currentTheme theme.ThemeVariant
-	i18n         i18n.LocaleManager
+	i18n         i18nPort.LocalePort
 
 	targetProgress  float64
 	currentProgress float64
@@ -2380,7 +2795,7 @@ type StatusCard struct {
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
-func NewStatusCard(fromVersion, toVersion string, themeVariant theme.ThemeVariant, i18n i18n.LocaleManager) *StatusCard {
+func NewStatusCard(fromVersion, toVersion string, themeVariant theme.ThemeVariant, i18n i18nPort.LocalePort) *StatusCard {
 	card := &StatusCard{
 		targetProgress:  0,
 		currentProgress: 0,
@@ -2548,7 +2963,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	"github.com/kihyun1998/dupdater/internal/i18n"
+	i18nPort "github.com/kihyun1998/dupdater/internal/i18n/domain/ports"
 	logPort "github.com/kihyun1998/dupdater/internal/logger/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/ui/components"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
@@ -2567,7 +2982,7 @@ type Manager struct {
 	app        fyne.App
 	mainWindow fyne.Window
 	logger     logPort.LoggerPort
-	i18n       i18n.LocaleManager
+	i18n       i18nPort.LocalePort
 
 	totalSteps   int
 	currentStep  int
@@ -2587,7 +3002,7 @@ type Config struct {
 	ToVersion   string
 	Logger      logPort.LoggerPort
 	Theme       theme.ThemeVariant
-	I18n        i18n.LocaleManager
+	I18n        i18nPort.LocalePort
 }
 
 // New는 새로운 Manager 인스턴스를 생성합니다
