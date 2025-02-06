@@ -87,25 +87,24 @@ func (m *Manager) Backup() error {
 
 // Restore는 백업된 파일들을 복원합니다
 func (m *Manager) Restore() error {
-	defer func() {
-		if r := recover(); r != nil {
-			m.logger.Error("Restore 함수에서 패닉 발생: %v", r)
-		}
-	}()
+	m.logger.Info("파일 복원 시작")
 
 	// 백업 디렉토리 존재 확인
 	if _, err := os.Stat(m.backupDir); os.IsNotExist(err) {
+		m.logger.Error("백업 디렉토리가 존재하지 않음: %s", m.backupDir)
 		return fmt.Errorf("백업 디렉토리가 존재하지 않습니다: %s", m.backupDir)
 	}
 
 	// 현재 디렉토리 정리
 	if err := m.cleanCurrentDirectory(); err != nil {
+		m.logger.Error("현재 디렉토리 정리 실패: %v", err)
 		return fmt.Errorf("현재 디렉토리 정리 실패: %w", err)
 	}
 
 	// 백업 파일 복원
 	files, err := os.ReadDir(m.backupDir)
 	if err != nil {
+		m.logger.Error("백업 디렉토리 읽기 실패: %v", err)
 		return fmt.Errorf("백업 디렉토리 읽기 실패: %w", err)
 	}
 
@@ -114,17 +113,21 @@ func (m *Manager) Restore() error {
 		destPath := filepath.Join(m.currentDir, file.Name())
 
 		if file.IsDir() {
+			m.logger.Info("폴더 복원 시도: %s -> %s", srcPath, destPath)
 			if err := m.restoreDirectory(srcPath, destPath); err != nil {
+				m.logger.Error("폴더 복원 실패: %s, 에러: %v", srcPath, err)
 				return fmt.Errorf("디렉토리 복원 실패 (%s): %w", file.Name(), err)
 			}
 		} else {
+			m.logger.Info("파일 복원 시도: %s -> %s", srcPath, destPath)
 			if err := m.restoreFile(srcPath, destPath); err != nil {
+				m.logger.Error("파일 복원 실패: %s, 에러: %v", srcPath, err)
 				return fmt.Errorf("파일 복원 실패 (%s): %w", file.Name(), err)
 			}
 		}
 	}
 
-	m.logger.Info("복원 완료: %s", m.backupDir)
+	m.logger.Info("파일 복원 완료")
 	return nil
 }
 
@@ -233,43 +236,56 @@ func (m *Manager) restoreFile(src, dest string) error {
 	// 기존 파일이 존재하면 삭제 시도
 	if _, err := os.Stat(dest); err == nil {
 		if err := os.Remove(dest); err != nil {
-			return fmt.Errorf("기존 파일 삭제 실패: %v", err)
+			m.logger.Info("기존 파일 삭제 시도: %s", dest)
+			if err := os.Remove(dest); err != nil {
+				return fmt.Errorf("기존 파일 삭제 실패: %v", err)
+			}
 		}
 	}
 
 	// Rename 시도
 	if err := os.Rename(src, dest); err == nil {
+		m.logger.Info("파일 정상적으로 Rename으로 복원됨: %s -> %s", src, dest)
 		return nil
+	} else {
+		// Rename 실패 로그 추가
+		m.logger.Error("파일 Rename 실패, 복사 방식으로 복원 시도: %s -> %s, 에러: %v", src, dest, err)
 	}
 
 	// Rename 실패 시 기존 방식으로 복원 진행
 	sourceFile, err := os.Open(src)
 	if err != nil {
-		return err
+		return fmt.Errorf("파일 열기 실패: %v", err)
 	}
 	defer sourceFile.Close()
 
 	destFile, err := os.Create(dest)
 	if err != nil {
-		return err
+		return fmt.Errorf("파일 생성 실패: %v", err)
 	}
 	defer destFile.Close()
 
 	if _, err := io.Copy(destFile, sourceFile); err != nil {
-		return err
+		return fmt.Errorf("파일 복사 실패: %v", err)
 	}
+
+	m.logger.Info("파일 복사 방식으로 복원됨: %s -> %s", src, dest)
 
 	return os.Remove(src)
 }
 
 // 디렉토리 복구 함수
 func (m *Manager) restoreDirectory(src, dest string) error {
+	m.logger.Info("디렉토리 복원 시도: %s -> %s", src, dest)
+
 	if err := os.MkdirAll(dest, os.ModePerm); err != nil {
+		m.logger.Error("디렉토리 생성 실패: %s, 에러: %v", dest, err)
 		return err
 	}
 
 	entries, err := os.ReadDir(src)
 	if err != nil {
+		m.logger.Error("디렉토리 읽기 실패: %s, 에러: %v", src, err)
 		return err
 	}
 
@@ -278,16 +294,21 @@ func (m *Manager) restoreDirectory(src, dest string) error {
 		destPath := filepath.Join(dest, entry.Name())
 
 		if entry.IsDir() {
+			m.logger.Info("하위 디렉토리 복원 시도: %s -> %s", srcPath, destPath)
 			if err := m.restoreDirectory(srcPath, destPath); err != nil {
+				m.logger.Error("하위 디렉토리 복원 실패: %s, 에러: %v", srcPath, err)
 				return err
 			}
 		} else {
+			m.logger.Info("파일 복원 시도: %s -> %s", srcPath, destPath)
 			if err := m.restoreFile(srcPath, destPath); err != nil {
+				m.logger.Error("파일 복원 실패: %s, 에러: %v", srcPath, err)
 				return err
 			}
 		}
 	}
 
+	m.logger.Info("디렉토리 복원 완료: %s", dest)
 	return os.RemoveAll(src)
 }
 
@@ -303,19 +324,24 @@ func (m *Manager) cleanCurrentDirectory() error {
 		for i := 0; i < 3; i++ {
 			var err error
 			if file.IsDir() {
+				m.logger.Error("폴더 삭제 시도: %s", path)
 				err = os.RemoveAll(path)
 			} else {
+				m.logger.Error("파일 삭제 시도: %s", path)
 				err = os.Remove(path)
 			}
 
 			if err == nil {
+				m.logger.Info("삭제 성공: %s", path)
 				break
 			}
 
+			// 마지막 시도에는 old 붙이고 삭제 시도도
 			if i == 2 {
-				// 마지막 시도에서는 이름 변경 후 삭제 시도
 				newPath := path + ".old"
+				m.logger.Error("파일/폴더 삭제 실패, 이름 변경 후 삭제 시도: %s -> %s", path, newPath)
 				if os.Rename(path, newPath) == nil {
+					m.logger.Error(".old 파일 삭제 시도: %s", newPath)
 					os.Remove(newPath)
 				}
 			}

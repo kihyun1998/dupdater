@@ -22,10 +22,11 @@ const (
 // Updater는 업데이트 프로세스의 전체 흐름을 제어하는 구조체입니다
 type Updater struct {
 	// 기본 설정
-	appName         string // 업데이트할 애플리케이션의 이름
-	fromVersion     string // 현재 애플리케이션의 버전
-	serverName      string // 서버 프로필 이름
-	backupCompleted bool   // 백업 상태 추적을 위한 필드 추가
+	appName          string // 업데이트할 애플리케이션의 이름
+	fromVersion      string // 현재 애플리케이션의 버전
+	serverName       string // 서버 프로필 이름
+	backupCompleted  bool   // 백업 상태 추적을 위한 필드
+	restoreCompleted bool   // 복원 상태 추적을 위한 필드
 
 	// 의존성들
 	ui          UIManager      // UI 관리자
@@ -41,29 +42,31 @@ type Updater struct {
 
 // Config는 새로운 Updater를 생성할 때 필요한 설정을 담는 구조체입니다
 type Config struct {
-	AppName         string
-	FromVersion     string
-	ServerName      string
-	BackupCompleted bool
-	UIManager       UIManager
-	Logger          Logger
-	NetworkManager  NetworkManager
-	FileManager     FileManager
-	HashManager     HashManager
+	AppName          string
+	FromVersion      string
+	ServerName       string
+	BackupCompleted  bool
+	RestoreCompleted bool
+	UIManager        UIManager
+	Logger           Logger
+	NetworkManager   NetworkManager
+	FileManager      FileManager
+	HashManager      HashManager
 }
 
 // New는 새로운 Updater 인스턴스를 생성합니다
 func New(config Config) *Updater {
 	return &Updater{
-		appName:         config.AppName,
-		fromVersion:     config.FromVersion,
-		serverName:      config.ServerName,
-		backupCompleted: config.BackupCompleted,
-		ui:              config.UIManager,
-		logger:          config.Logger,
-		network:         config.NetworkManager,
-		fileManager:     config.FileManager,
-		hashManager:     config.HashManager,
+		appName:          config.AppName,
+		fromVersion:      config.FromVersion,
+		serverName:       config.ServerName,
+		backupCompleted:  config.BackupCompleted,
+		restoreCompleted: config.RestoreCompleted,
+		ui:               config.UIManager,
+		logger:           config.Logger,
+		network:          config.NetworkManager,
+		fileManager:      config.FileManager,
+		hashManager:      config.HashManager,
 	}
 }
 
@@ -296,14 +299,36 @@ func (u *Updater) restartAfterRestore() error {
 }
 
 func (u *Updater) restoreFiles() error {
-	u.ui.UpdateDetail("파일을 복원하고 있습니다...")
-	return u.fileManager.Restore()
+	if u.restoreCompleted {
+		u.logger.Error("restoreFiles()가 중복 실행되려 했으나, 이미 복원이 완료된 상태입니다. 중단함.")
+		return nil
+	}
+
+	u.logger.Info("파일 복원 시작")
+	if err := u.fileManager.Restore(); err != nil {
+		u.logger.Error("파일 복원 실패: %v", err)
+		return err
+	}
+
+	u.restoreCompleted = true
+
+	// 복원 후 디렉토리 확인
+	files, err := os.ReadDir(u.fileManager.GetBackupDir())
+	if err != nil {
+		u.logger.Error("복원 후 백업 디렉토리 확인 실패: %v", err)
+	} else {
+		for _, file := range files {
+			u.logger.Info("복원 후 파일 확인: %s", file.Name())
+		}
+	}
+
+	return nil
 }
 
 func (u *Updater) handleError(message string, err error) error {
 	u.logger.Error("%s: %v", message, err)
 
-	if u.backupCompleted {
+	if u.backupCompleted && !u.restoreCompleted {
 		u.ui.ShowRestoring()
 		if restoreErr := u.restoreFiles(); restoreErr != nil {
 			u.logger.Error("파일 복원 실패: %v", restoreErr)
@@ -317,6 +342,9 @@ func (u *Updater) handleError(message string, err error) error {
 		} else {
 			u.logger.Info("복원 완료 후 백업 디렉토리 유지됨: %s", u.fileManager.GetBackupDir())
 		}
+
+		// 복원 완료시 복원 완료 상태 저장
+		u.restoreCompleted = true
 
 		// 복원 성공 시 애플리케이션 재시작 추가
 		u.logger.Info("복원이 완료됨. 애플리케이션을 재시작합니다...")

@@ -20,7 +20,19 @@ dupdater/
     │   ├── manager.go
     │   └── types.go
     ├── logger/
-    │   └── logger.go
+    │   ├── domain/
+    │   │   ├── entity/
+    │   │   │   ├── log_entry.go
+    │   │   │   └── log_level.go
+    │   │   ├── ports/
+    │   │   │   └── logger_port.go
+    │   │   ├── repository/
+    │   │   │   └── log_repository.go
+    │   │   └── usecase/
+    │   │   │   └── logger_service.go
+    │   ├── infrastructure/
+    │   │   └── file_logger.go
+    │   └── factory.go
     ├── network/
     │   └── manager.go
     ├── ui/
@@ -143,6 +155,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/hash"
 	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/logger"
+	logEntity "github.com/kihyun1998/dupdater/internal/logger/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/internal/ui"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
@@ -200,7 +213,7 @@ func main() {
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
 		LogPath:    logPath,
-		LogLevel:   logger.INFO,
+		LogLevel:   logEntity.INFO,
 		MaxSize:    10 * 1024 * 1024, // 10MB
 		MaxBackups: 5,
 	})
@@ -308,7 +321,7 @@ func runTestMode(i18nManager i18n.LocaleManager) {
 	logPath := getLogPath()
 	logger, err := logger.New(logger.Config{
 		LogPath:    logPath,
-		LogLevel:   logger.INFO,
+		LogLevel:   logEntity.INFO,
 		MaxSize:    10 * 1024 * 1024,
 		MaxBackups: 5,
 	})
@@ -616,9 +629,52 @@ func (u *Updater) restartApplication() error {
 
 	return nil
 }
+
+// restartAfterRestore는 복원 완료 후 애플리케이션을 재시작합니다
+func (u *Updater) restartAfterRestore() error {
+	u.ui.SetCurrentStep(0)
+	u.ui.UpdateDetail("복원이 완료되었습니다. 앱을 재시작합니다...")
+
+	// 잠시 대기하여 메시지가 표시되도록 함
+	time.Sleep(2 * time.Second)
+
+	// 기존 버전으로 앱 실행 준비
+	cmd := exec.Command(fmt.Sprintf("./%s", u.appName))
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: windows.CREATE_NEW_CONSOLE,
+	}
+
+	// 앱 실행
+	if err := cmd.Start(); err != nil {
+		u.logger.Error("복원 후 애플리케이션 실행 실패: %v", err)
+		return err
+	}
+
+	// UI 종료 전 잠시 대기
+	time.Sleep(2 * time.Second)
+	u.ui.Close()
+
+	return nil
+}
+
 func (u *Updater) restoreFiles() error {
-	u.ui.UpdateDetail("파일을 복원하고 있습니다...")
-	return u.fileManager.Restore()
+	u.logger.Info("파일 복원 시작")
+	if err := u.fileManager.Restore(); err != nil {
+		u.logger.Error("파일 복원 실패: %v", err)
+		return err
+	}
+
+	// 복원 후 디렉토리 확인
+	files, err := os.ReadDir(u.fileManager.GetBackupDir())
+	if err != nil {
+		u.logger.Error("복원 후 백업 디렉토리 확인 실패: %v", err)
+	} else {
+		for _, file := range files {
+			u.logger.Info("복원 후 파일 확인: %s", file.Name())
+		}
+	}
+
+	return nil
 }
 
 func (u *Updater) handleError(message string, err error) error {
@@ -641,7 +697,7 @@ func (u *Updater) handleError(message string, err error) error {
 
 		// 복원 성공 시 애플리케이션 재시작 추가
 		u.logger.Info("복원이 완료됨. 애플리케이션을 재시작합니다...")
-		if err := u.restartApplication(); err != nil {
+		if err := u.restartAfterRestore(); err != nil {
 			u.logger.Error("복원 후 애플리케이션 재시작 실패: %v", err)
 		}
 
@@ -650,14 +706,6 @@ func (u *Updater) handleError(message string, err error) error {
 
 	u.ui.ShowError(fmt.Errorf("%s: %v", message, err))
 	return fmt.Errorf("%s: %v", message, err)
-}
-
-// 복원 완료 후 Updater에서 백업 디렉토리 삭제하도록 변경
-func (u *Updater) finalizeUpdate() {
-	// 업데이트 성공 또는 복원 완료 후 백업 디렉토리 삭제
-	if err := os.RemoveAll(u.fileManager.GetBackupDir()); err != nil {
-		u.logger.Error("백업 디렉토리 삭제 실패: %v", err)
-	}
 }
 
 // Logger는 로깅 작업을 위한 인터페이스입니다
@@ -795,25 +843,24 @@ func (m *Manager) Backup() error {
 
 // Restore는 백업된 파일들을 복원합니다
 func (m *Manager) Restore() error {
-	defer func() {
-		if r := recover(); r != nil {
-			m.logger.Error("Restore 함수에서 패닉 발생: %v", r)
-		}
-	}()
+	m.logger.Info("파일 복원 시작")
 
 	// 백업 디렉토리 존재 확인
 	if _, err := os.Stat(m.backupDir); os.IsNotExist(err) {
+		m.logger.Error("백업 디렉토리가 존재하지 않음: %s", m.backupDir)
 		return fmt.Errorf("백업 디렉토리가 존재하지 않습니다: %s", m.backupDir)
 	}
 
 	// 현재 디렉토리 정리
 	if err := m.cleanCurrentDirectory(); err != nil {
+		m.logger.Error("현재 디렉토리 정리 실패: %v", err)
 		return fmt.Errorf("현재 디렉토리 정리 실패: %w", err)
 	}
 
 	// 백업 파일 복원
 	files, err := os.ReadDir(m.backupDir)
 	if err != nil {
+		m.logger.Error("백업 디렉토리 읽기 실패: %v", err)
 		return fmt.Errorf("백업 디렉토리 읽기 실패: %w", err)
 	}
 
@@ -822,17 +869,21 @@ func (m *Manager) Restore() error {
 		destPath := filepath.Join(m.currentDir, file.Name())
 
 		if file.IsDir() {
+			m.logger.Info("폴더 복원 시도: %s -> %s", srcPath, destPath)
 			if err := m.restoreDirectory(srcPath, destPath); err != nil {
+				m.logger.Error("폴더 복원 실패: %s, 에러: %v", srcPath, err)
 				return fmt.Errorf("디렉토리 복원 실패 (%s): %w", file.Name(), err)
 			}
 		} else {
+			m.logger.Info("파일 복원 시도: %s -> %s", srcPath, destPath)
 			if err := m.restoreFile(srcPath, destPath); err != nil {
+				m.logger.Error("파일 복원 실패: %s, 에러: %v", srcPath, err)
 				return fmt.Errorf("파일 복원 실패 (%s): %w", file.Name(), err)
 			}
 		}
 	}
 
-	m.logger.Info("복원 완료: %s", m.backupDir)
+	m.logger.Info("파일 복원 완료")
 	return nil
 }
 
@@ -941,43 +992,56 @@ func (m *Manager) restoreFile(src, dest string) error {
 	// 기존 파일이 존재하면 삭제 시도
 	if _, err := os.Stat(dest); err == nil {
 		if err := os.Remove(dest); err != nil {
-			return fmt.Errorf("기존 파일 삭제 실패: %v", err)
+			m.logger.Info("기존 파일 삭제 시도: %s", dest)
+			if err := os.Remove(dest); err != nil {
+				return fmt.Errorf("기존 파일 삭제 실패: %v", err)
+			}
 		}
 	}
 
 	// Rename 시도
 	if err := os.Rename(src, dest); err == nil {
+		m.logger.Info("파일 정상적으로 Rename으로 복원됨: %s -> %s", src, dest)
 		return nil
+	} else {
+		// Rename 실패 로그 추가
+		m.logger.Error("파일 Rename 실패, 복사 방식으로 복원 시도: %s -> %s, 에러: %v", src, dest, err)
 	}
 
 	// Rename 실패 시 기존 방식으로 복원 진행
 	sourceFile, err := os.Open(src)
 	if err != nil {
-		return err
+		return fmt.Errorf("파일 열기 실패: %v", err)
 	}
 	defer sourceFile.Close()
 
 	destFile, err := os.Create(dest)
 	if err != nil {
-		return err
+		return fmt.Errorf("파일 생성 실패: %v", err)
 	}
 	defer destFile.Close()
 
 	if _, err := io.Copy(destFile, sourceFile); err != nil {
-		return err
+		return fmt.Errorf("파일 복사 실패: %v", err)
 	}
+
+	m.logger.Info("파일 복사 방식으로 복원됨: %s -> %s", src, dest)
 
 	return os.Remove(src)
 }
 
 // 디렉토리 복구 함수
 func (m *Manager) restoreDirectory(src, dest string) error {
+	m.logger.Info("디렉토리 복원 시도: %s -> %s", src, dest)
+
 	if err := os.MkdirAll(dest, os.ModePerm); err != nil {
+		m.logger.Error("디렉토리 생성 실패: %s, 에러: %v", dest, err)
 		return err
 	}
 
 	entries, err := os.ReadDir(src)
 	if err != nil {
+		m.logger.Error("디렉토리 읽기 실패: %s, 에러: %v", src, err)
 		return err
 	}
 
@@ -986,16 +1050,21 @@ func (m *Manager) restoreDirectory(src, dest string) error {
 		destPath := filepath.Join(dest, entry.Name())
 
 		if entry.IsDir() {
+			m.logger.Info("하위 디렉토리 복원 시도: %s -> %s", srcPath, destPath)
 			if err := m.restoreDirectory(srcPath, destPath); err != nil {
+				m.logger.Error("하위 디렉토리 복원 실패: %s, 에러: %v", srcPath, err)
 				return err
 			}
 		} else {
+			m.logger.Info("파일 복원 시도: %s -> %s", srcPath, destPath)
 			if err := m.restoreFile(srcPath, destPath); err != nil {
+				m.logger.Error("파일 복원 실패: %s, 에러: %v", srcPath, err)
 				return err
 			}
 		}
 	}
 
+	m.logger.Info("디렉토리 복원 완료: %s", dest)
 	return os.RemoveAll(src)
 }
 
@@ -1011,19 +1080,24 @@ func (m *Manager) cleanCurrentDirectory() error {
 		for i := 0; i < 3; i++ {
 			var err error
 			if file.IsDir() {
+				m.logger.Error("폴더 삭제 시도: %s", path)
 				err = os.RemoveAll(path)
 			} else {
+				m.logger.Error("파일 삭제 시도: %s", path)
 				err = os.Remove(path)
 			}
 
 			if err == nil {
+				m.logger.Info("삭제 성공: %s", path)
 				break
 			}
 
+			// 마지막 시도에는 old 붙이고 삭제 시도도
 			if i == 2 {
-				// 마지막 시도에서는 이름 변경 후 삭제 시도
 				newPath := path + ".old"
+				m.logger.Error("파일/폴더 삭제 실패, 이름 변경 후 삭제 시도: %s -> %s", path, newPath)
 				if os.Rename(path, newPath) == nil {
+					m.logger.Error(".old 파일 삭제 시도: %s", newPath)
 					os.Remove(newPath)
 				}
 			}
@@ -1575,80 +1649,351 @@ func IsValidLanguage(lang string) bool {
 }
 
 ```
-## internal/logger/logger.go
+## internal/logger/domain/entity/log_entry.go
 ```go
-package logger
+package entity
 
 import (
 	"fmt"
-	"log"
-	"os"
-	"path/filepath"
-	"runtime"
-	"sync"
 	"time"
 )
 
-// LogLevel은 로그의 중요도를 나타냅니다
+// LogEntry는 하나의 로그 항목을 나타냅니다.
+type LogEntry struct {
+	// Level은 로그의 중요도를 나타냅니다.
+	Level LogLevel
+	// Message는 로그 메시지 내용입니다.
+	Message string
+	// Timestamp는 로그가 생성된 시간입니다.
+	Timestamp time.Time
+	// CallerInfo는 로그를 생성한 코드의 위치 정보입니다.
+	CallerInfo string
+	// Fields는 로그에 추가되는 구조화된 데이터입니다.
+	Fields map[string]interface{}
+}
+
+// NewLogEntry는 새로운 LogEntry를 생성합니다.
+func NewLogEntry(level LogLevel, message string, callerInfo string) *LogEntry {
+	return &LogEntry{
+		Level:      level,
+		Message:    message,
+		Timestamp:  time.Now(),
+		CallerInfo: callerInfo,
+		Fields:     make(map[string]interface{}),
+	}
+}
+
+// WithField는 로그 엔트리에 필드를 추가합니다.
+func (e *LogEntry) WithField(key string, value interface{}) *LogEntry {
+	e.Fields[key] = value
+	return e
+}
+
+// Format은 로그 엔트리를 문자열로 포맷팅합니다.
+func (e *LogEntry) Format() string {
+	base := fmt.Sprintf("[%s] %s [%s] %s",
+		e.Timestamp.Format("2006-01-02 15:04:05"),
+		e.Level.String(),
+		e.CallerInfo,
+		e.Message,
+	)
+
+	// 추가 필드가 있는 경우 포함
+	if len(e.Fields) > 0 {
+		fields := ""
+		for k, v := range e.Fields {
+			fields += fmt.Sprintf(" %s=%v", k, v)
+		}
+		base += fields
+	}
+
+	return base
+}
+
+// IsValid는 로그 엔트리가 유효한지 검사합니다.
+func (e *LogEntry) IsValid() bool {
+	return e.Level.IsValid() &&
+		e.Message != "" &&
+		!e.Timestamp.IsZero() &&
+		e.CallerInfo != ""
+}
+
+```
+## internal/logger/domain/entity/log_level.go
+```go
+package entity
+
+// LogLevel은 로그의 중요도를 나타냅니다.
 type LogLevel int
 
 const (
+	// DEBUG는 디버깅 목적의 상세 정보를 나타냅니다.
 	DEBUG LogLevel = iota
+	// INFO는 일반적인 정보성 메시지를 나타냅니다.
 	INFO
+	// WARN은 잠재적인 문제를 나타냅니다.
 	WARN
+	// ERROR는 오류 상황을 나타냅니다.
 	ERROR
+	// FATAL은 애플리케이션을 중단시킬 수 있는 심각한 오류를 나타냅니다.
 	FATAL
 )
 
-// 로그 레벨을 문자열로 변환
+// String은 로그 레벨을 문자열로 변환합니다.
 func (l LogLevel) String() string {
 	return [...]string{"DEBUG", "INFO", "WARN", "ERROR", "FATAL"}[l]
 }
 
-// LogEntry는 하나의 로그 항목을 나타냅니다
-type LogEntry struct {
-	Level      LogLevel  // 로그 레벨
-	Message    string    // 로그 메시지
-	Timestamp  time.Time // 로그 발생 시간
-	CallerInfo string    // 호출자 정보
+// IsValid는 로그 레벨이 유효한지 검사합니다.
+func (l LogLevel) IsValid() bool {
+	return l >= DEBUG && l <= FATAL
 }
 
-// Logger는 로깅을 관리하는 구조체입니다
-type Logger struct {
-	mu         sync.Mutex  // 동시성 제어를 위한 뮤텍스
-	logFile    *os.File    // 로그 파일
-	logger     *log.Logger // 실제 로깅을 수행하는 logger
-	logLevel   LogLevel    // 현재 로그 레벨
-	logPath    string      // 로그 파일 경로
-	maxSize    int64       // 최대 로그 파일 크기 (바이트)
-	maxBackups int         // 보관할 최대 백업 파일 수
+// IsError는 현재 로그 레벨이 에러 수준인지 확인합니다.
+func (l LogLevel) IsError() bool {
+	return l >= ERROR
 }
 
-// Config는 Logger 생성에 필요한 설정을 담는 구조체입니다
+```
+## internal/logger/domain/ports/logger_port.go
+```go
+package ports
+
+// LoggerPort는 로깅 시스템의 외부 인터페이스를 정의합니다.
+type LoggerPort interface {
+	// Info는 정보성 메시지를 기록합니다.
+	Info(format string, v ...interface{})
+
+	// Error는 에러 메시지를 기록합니다.
+	Error(format string, v ...interface{})
+
+	// Debug는 디버그 메시지를 기록합니다.
+	Debug(format string, v ...interface{})
+
+	// Warn은 경고 메시지를 기록합니다.
+	Warn(format string, v ...interface{})
+
+	// Fatal은 치명적인 에러를 기록하고 프로그램을 종료합니다.
+	Fatal(format string, v ...interface{})
+
+	// Close는 로거를 정리합니다.
+	Close() error
+}
+
+```
+## internal/logger/domain/repository/log_repository.go
+```go
+package repository
+
+import (
+	"path/filepath"
+
+	"github.com/kihyun1998/dupdater/internal/logger/domain/entity"
+)
+
+// LogRepository는 로그 저장소의 인터페이스를 정의합니다.
+type LogRepository interface {
+	// Write는 로그 엔트리를 저장합니다.
+	Write(entry *entity.LogEntry) error
+
+	// Rotate는 로그 파일을 순환합니다.
+	Rotate() error
+
+	// Close는 로그 저장소를 정리합니다.
+	Close() error
+}
+
+// LogConfig는 로그 저장소의 설정을 정의합니다.
+type LogConfig struct {
+	// LogPath는 로그 파일의 경로입니다.
+	LogPath string
+	// MaxSize는 로그 파일의 최대 크기(바이트)입니다.
+	MaxSize int64
+	// MaxBackups는 보관할 최대 백업 파일 수입니다.
+	MaxBackups int
+}
+
+// Validate는 로그 설정이 유효한지 검사합니다.
+func (c *LogConfig) Validate() error {
+	if c.LogPath == "" {
+		return filepath.ErrBadPattern
+	}
+	if c.MaxSize <= 0 {
+		c.MaxSize = 10 * 1024 * 1024 // 기본값 10MB
+	}
+	if c.MaxBackups <= 0 {
+		c.MaxBackups = 5 // 기본값 5개
+	}
+	return nil
+}
+
+// NewLogConfig는 새로운 LogConfig를 생성합니다.
+func NewLogConfig(path string, maxSize int64, maxBackups int) *LogConfig {
+	return &LogConfig{
+		LogPath:    path,
+		MaxSize:    maxSize,
+		MaxBackups: maxBackups,
+	}
+}
+
+```
+## internal/logger/domain/usecase/logger_service.go
+```go
+package usecase
+
+import (
+	"fmt"
+	"os"
+	"runtime"
+	"sync"
+
+	"github.com/kihyun1998/dupdater/internal/logger/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/ports"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/repository"
+)
+
+// loggerService는 LoggerPort의 구현체입니다.
+type loggerService struct {
+	mu         sync.RWMutex
+	repository repository.LogRepository
+	level      entity.LogLevel
+}
+
+// NewLoggerService는 새로운 LoggerService 인스턴스를 생성합니다.
+func NewLoggerService(repo repository.LogRepository, level entity.LogLevel) ports.LoggerPort {
+	return &loggerService{
+		repository: repo,
+		level:      level,
+	}
+}
+
+// log는 실제 로깅을 수행하는 내부 메서드입니다.
+func (l *loggerService) log(level entity.LogLevel, format string, args ...interface{}) {
+	if level < l.level {
+		return
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	// 호출자 정보 가져오기
+	_, file, line, ok := runtime.Caller(2)
+	callerInfo := "unknown"
+	if ok {
+		callerInfo = fmt.Sprintf("%s:%d", file, line)
+	}
+
+	// 로그 엔트리 생성
+	entry := entity.NewLogEntry(
+		level,
+		fmt.Sprintf(format, args...),
+		callerInfo,
+	)
+
+	// 로그 저장
+	if err := l.repository.Write(entry); err != nil {
+		fmt.Printf("로그 저장 실패: %v\n", err)
+	}
+
+	// FATAL 레벨인 경우 프로그램 종료
+	if level == entity.FATAL {
+		l.Close()
+		os.Exit(1)
+	}
+}
+
+// LoggerPort 인터페이스 구현
+func (l *loggerService) Debug(format string, args ...interface{}) {
+	l.log(entity.DEBUG, format, args...)
+}
+
+func (l *loggerService) Info(format string, args ...interface{}) {
+	l.log(entity.INFO, format, args...)
+}
+
+func (l *loggerService) Warn(format string, args ...interface{}) {
+	l.log(entity.WARN, format, args...)
+}
+
+func (l *loggerService) Error(format string, args ...interface{}) {
+	l.log(entity.ERROR, format, args...)
+}
+
+func (l *loggerService) Fatal(format string, args ...interface{}) {
+	l.log(entity.FATAL, format, args...)
+}
+
+func (l *loggerService) Close() error {
+	return l.repository.Close()
+}
+
+```
+## internal/logger/factory.go
+```go
+package logger
+
+import (
+	"github.com/kihyun1998/dupdater/internal/logger/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/ports"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/usecase"
+	"github.com/kihyun1998/dupdater/internal/logger/infrastructure"
+)
+
+// Config는 로거 생성에 필요한 설정을 정의합니다.
 type Config struct {
-	LogPath    string   // 로그 파일 경로
-	LogLevel   LogLevel // 로그 레벨
-	MaxSize    int64    // 최대 파일 크기 (바이트)
-	MaxBackups int      // 최대 백업 파일 수
+	LogPath    string          // 로그 파일 경로
+	LogLevel   entity.LogLevel // 로그 레벨
+	MaxSize    int64           // 최대 파일 크기 (바이트)
+	MaxBackups int             // 최대 백업 파일 수
 }
 
-// New는 새로운 Logger 인스턴스를 생성합니다
-func New(config Config) (*Logger, error) {
-	// 기본값 설정
-	if config.LogPath == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("홈 디렉토리 찾기 실패: %w", err)
-		}
-		config.LogPath = filepath.Join(homeDir, ".testfolder", "logs", "updater.log")
+// New는 새로운 로거 인스턴스를 생성합니다.
+func New(config Config) (ports.LoggerPort, error) {
+	// 저장소 설정 생성
+	repoConfig := repository.NewLogConfig(
+		config.LogPath,
+		config.MaxSize,
+		config.MaxBackups,
+	)
+
+	// 파일 로거 생성
+	fileLogger, err := infrastructure.NewFileLogger(repoConfig)
+	if err != nil {
+		return nil, err
 	}
 
-	if config.MaxSize == 0 {
-		config.MaxSize = 10 * 1024 * 1024 // 기본 10MB
-	}
+	// 로깅 서비스 생성 및 반환
+	return usecase.NewLoggerService(fileLogger, config.LogLevel), nil
+}
 
-	if config.MaxBackups == 0 {
-		config.MaxBackups = 5 // 기본 5개 백업
+```
+## internal/logger/infrastructure/file_logger.go
+```go
+package infrastructure
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+
+	"github.com/kihyun1998/dupdater/internal/logger/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/logger/domain/repository"
+)
+
+// FileLogger는 파일 기반 로그 저장소입니다.
+type FileLogger struct {
+	mu       sync.RWMutex
+	config   *repository.LogConfig
+	file     *os.File
+	fileSize int64
+}
+
+// NewFileLogger는 새로운 FileLogger를 생성합니다.
+func NewFileLogger(config *repository.LogConfig) (repository.LogRepository, error) {
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("로거 설정 검증 실패: %w", err)
 	}
 
 	// 로그 디렉토리 생성
@@ -1656,140 +2001,83 @@ func New(config Config) (*Logger, error) {
 		return nil, fmt.Errorf("로그 디렉토리 생성 실패: %w", err)
 	}
 
-	// 로그 파일 생성
-	logFile, err := os.OpenFile(
+	// 로그 파일 생성 또는 열기
+	file, err := os.OpenFile(
 		config.LogPath,
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND,
 		0644,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("로그 파일 생성 실패: %w", err)
+		return nil, fmt.Errorf("로그 파일 열기 실패: %w", err)
 	}
 
-	return &Logger{
-		logFile:    logFile,
-		logger:     log.New(logFile, "", 0),
-		logLevel:   config.LogLevel,
-		logPath:    config.LogPath,
-		maxSize:    config.MaxSize,
-		maxBackups: config.MaxBackups,
+	// 현재 파일 크기 확인
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, fmt.Errorf("파일 정보 가져오기 실패: %w", err)
+	}
+
+	return &FileLogger{
+		config:   config,
+		file:     file,
+		fileSize: info.Size(),
 	}, nil
 }
 
-// log는 실제 로깅을 수행하는 내부 메서드입니다
-func (l *Logger) log(level LogLevel, format string, args ...interface{}) {
-	if level < l.logLevel {
-		return
+// Write는 로그 엔트리를 파일에 기록합니다.
+func (f *FileLogger) Write(entry *entity.LogEntry) error {
+	if !entry.IsValid() {
+		return fmt.Errorf("유효하지 않은 로그 엔트리")
 	}
 
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	f.mu.Lock()
+	defer f.mu.Unlock()
 
-	// 로그 순환 체크
-	if err := l.checkRotate(); err != nil {
-		fmt.Fprintf(os.Stderr, "로그 순환 실패: %v\n", err)
-	}
+	// 로그 문자열 생성
+	logString := entry.Format() + "\n"
+	logSize := int64(len(logString))
 
-	// 호출자 정보 가져오기
-	_, file, line, ok := runtime.Caller(2)
-	callerInfo := "unknown"
-	if ok {
-		callerInfo = fmt.Sprintf("%s:%d", filepath.Base(file), line)
-	}
-
-	// 로그 엔트리 생성
-	entry := LogEntry{
-		Level:      level,
-		Message:    fmt.Sprintf(format, args...),
-		Timestamp:  time.Now(),
-		CallerInfo: callerInfo,
-	}
-
-	// 로그 포맷팅 및 작성
-	logLine := fmt.Sprintf(
-		"[%s] %s [%s] %s",
-		entry.Timestamp.Format("2006-01-02 15:04:05"),
-		entry.Level,
-		entry.CallerInfo,
-		entry.Message,
-	)
-
-	if err := l.logger.Output(0, logLine); err != nil {
-		fmt.Fprintf(os.Stderr, "로그 작성 실패: %v\n", err)
-	}
-}
-
-// 공개 로깅 메서드들
-func (l *Logger) Debug(format string, args ...interface{}) {
-	l.log(DEBUG, format, args...)
-}
-
-func (l *Logger) Info(format string, args ...interface{}) {
-	l.log(INFO, format, args...)
-}
-
-func (l *Logger) Warn(format string, args ...interface{}) {
-	l.log(WARN, format, args...)
-}
-
-func (l *Logger) Error(format string, args ...interface{}) {
-	l.log(ERROR, format, args...)
-}
-
-func (l *Logger) Fatal(format string, args ...interface{}) {
-	l.log(FATAL, format, args...)
-	os.Exit(1)
-}
-
-// Close는 로거를 정리합니다
-func (l *Logger) Close() error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if l.logFile != nil {
-		if err := l.logFile.Sync(); err != nil {
-			return fmt.Errorf("로그 파일 동기화 실패: %w", err)
+	// 파일 크기 체크 및 순환
+	if f.fileSize+logSize > f.config.MaxSize {
+		if err := f.rotate(); err != nil {
+			return fmt.Errorf("로그 파일 순환 실패: %w", err)
 		}
-		if err := l.logFile.Close(); err != nil {
-			return fmt.Errorf("로그 파일 닫기 실패: %w", err)
-		}
-		l.logFile = nil
 	}
+
+	// 로그 기록
+	n, err := f.file.WriteString(logString)
+	if err != nil {
+		return fmt.Errorf("로그 쓰기 실패: %w", err)
+	}
+
+	f.fileSize += int64(n)
 	return nil
 }
 
-// checkRotate는 로그 파일 크기를 확인하고 필요시 순환합니다
-func (l *Logger) checkRotate() error {
-	info, err := l.logFile.Stat()
-	if err != nil {
-		return fmt.Errorf("파일 정보 가져오기 실패: %w", err)
-	}
-
-	if info.Size() < l.maxSize {
-		return nil
-	}
-
+// rotate는 로그 파일을 순환합니다.
+func (f *FileLogger) rotate() error {
 	// 현재 파일 닫기
-	if err := l.logFile.Close(); err != nil {
+	if err := f.file.Close(); err != nil {
 		return fmt.Errorf("현재 로그 파일 닫기 실패: %w", err)
 	}
 
-	// 기존 백업 파일들 순환
-	for i := l.maxBackups - 1; i >= 0; i-- {
-		oldPath := fmt.Sprintf("%s.%d", l.logPath, i)
-		newPath := fmt.Sprintf("%s.%d", l.logPath, i+1)
+	// 백업 파일 순환
+	for i := f.config.MaxBackups - 1; i >= 0; i-- {
+		oldPath := fmt.Sprintf("%s.%d", f.config.LogPath, i)
+		newPath := fmt.Sprintf("%s.%d", f.config.LogPath, i+1)
 
 		if i == 0 {
-			oldPath = l.logPath
+			oldPath = f.config.LogPath
 		}
 
-		// 마지막 백업 파일 삭제
-		if i == l.maxBackups-1 {
+		// 마지막 백업 파일은 삭제
+		if i == f.config.MaxBackups-1 {
 			os.Remove(newPath)
 			continue
 		}
 
-		// 나머지 파일들 이름 변경
+		// 파일 이름 변경
 		if _, err := os.Stat(oldPath); err == nil {
 			if err := os.Rename(oldPath, newPath); err != nil {
 				return fmt.Errorf("파일 이름 변경 실패: %w", err)
@@ -1798,8 +2086,8 @@ func (l *Logger) checkRotate() error {
 	}
 
 	// 새 로그 파일 생성
-	newFile, err := os.OpenFile(
-		l.logPath,
+	file, err := os.OpenFile(
+		f.config.LogPath,
 		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
 		0644,
 	)
@@ -1807,10 +2095,47 @@ func (l *Logger) checkRotate() error {
 		return fmt.Errorf("새 로그 파일 생성 실패: %w", err)
 	}
 
-	l.logFile = newFile
-	l.logger = log.New(newFile, "", 0)
-
+	f.file = file
+	f.fileSize = 0
 	return nil
+}
+
+// Rotate는 수동으로 로그 파일을 순환합니다.
+func (f *FileLogger) Rotate() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.rotate()
+}
+
+// Close는 로거를 정리합니다.
+func (f *FileLogger) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.file != nil {
+		if err := f.file.Sync(); err != nil {
+			return fmt.Errorf("파일 동기화 실패: %w", err)
+		}
+		if err := f.file.Close(); err != nil {
+			return fmt.Errorf("파일 닫기 실패: %w", err)
+		}
+		f.file = nil
+	}
+	return nil
+}
+
+// GetCurrentSize는 현재 로그 파일의 크기를 반환합니다.
+func (f *FileLogger) GetCurrentSize() int64 {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.fileSize
+}
+
+// GetConfig는 현재 로거의 설정을 반환합니다.
+func (f *FileLogger) GetConfig() *repository.LogConfig {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.config
 }
 
 ```
@@ -2224,7 +2549,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"github.com/kihyun1998/dupdater/internal/i18n"
-	"github.com/kihyun1998/dupdater/internal/logger"
+	logPort "github.com/kihyun1998/dupdater/internal/logger/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/ui/components"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
 )
@@ -2241,7 +2566,7 @@ type State struct {
 type Manager struct {
 	app        fyne.App
 	mainWindow fyne.Window
-	logger     *logger.Logger
+	logger     logPort.LoggerPort
 	i18n       i18n.LocaleManager
 
 	totalSteps   int
@@ -2260,7 +2585,7 @@ type Config struct {
 	TotalSteps  int
 	FromVersion string
 	ToVersion   string
-	Logger      *logger.Logger
+	Logger      logPort.LoggerPort
 	Theme       theme.ThemeVariant
 	I18n        i18n.LocaleManager
 }
