@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/pkg/utils"
 	"golang.org/x/sys/windows"
 )
@@ -34,6 +35,7 @@ type Updater struct {
 	network     NetworkManager // 네트워크 관리자
 	fileManager FileManager    // 파일 관리자
 	hashManager HashManager    // 해시 관리자
+	i18n        i18n.Manager   // 다국어 관리자
 
 	// 상태 정보
 	serverIP   string // 조회된 서버 IP
@@ -52,6 +54,7 @@ type Config struct {
 	NetworkManager   NetworkManager
 	FileManager      FileManager
 	HashManager      HashManager
+	I18n             i18n.Manager
 }
 
 // New는 새로운 Updater 인스턴스를 생성합니다
@@ -67,6 +70,7 @@ func New(config Config) *Updater {
 		network:          config.NetworkManager,
 		fileManager:      config.FileManager,
 		hashManager:      config.HashManager,
+		i18n:             config.I18n,
 	}
 }
 
@@ -78,7 +82,7 @@ func (u *Updater) Start() {
 			u.logger.Error("파일 복원 실패: %v", err)
 			u.ui.ShowError(fmt.Errorf("복원 실패: %w", err))
 		} else {
-			u.ui.UpdateDetail("파일 복원이 완료되었습니다")
+			u.ui.UpdateDetail(u.i18n.GetMessage("update.restore.completed"))
 		}
 	})
 
@@ -149,14 +153,13 @@ func (u *Updater) processUpdate() error {
 func (u *Updater) checkRunningApp() error {
 	const maxAttempts = 30
 	u.ui.SetCurrentStep(0)
-	u.ui.UpdateDetail("애플리케이션 실행 상태를 확인하고 있습니다...")
+	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.checking"))
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		isRunning, _ := utils.CheckApplicationRunning(appName)
 		if !isRunning {
 			return nil
 		}
-		u.ui.UpdateDetail(fmt.Sprintf("앱 종료 대기 중... (%d/%d)", attempt+1, maxAttempts))
 		time.Sleep(time.Second)
 	}
 
@@ -165,7 +168,7 @@ func (u *Updater) checkRunningApp() error {
 
 func (u *Updater) getServerIP() error {
 	u.ui.SetCurrentStep(1)
-	u.ui.UpdateDetail("서버 정보를 가져오고 있습니다...")
+	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.getting_info"))
 
 	ip, err := u.network.GetServerIP(u.serverName)
 	if err != nil {
@@ -178,13 +181,13 @@ func (u *Updater) getServerIP() error {
 
 func (u *Updater) backupFiles() error {
 	u.ui.SetCurrentStep(2)
-	u.ui.UpdateDetail("파일을 백업하고 있습니다...")
+	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.preparing"))
 	return u.fileManager.Backup()
 }
 
 func (u *Updater) downloadUpdateFile() error {
 	u.ui.SetCurrentStep(3)
-	u.ui.UpdateDetail("업데이트 파일을 다운로드하고 있습니다...")
+	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.downloading"))
 
 	filename, err := u.network.GetUpdateFileName(u.serverIP)
 	if err != nil {
@@ -216,13 +219,13 @@ func (u *Updater) downloadUpdateFile() error {
 
 func (u *Updater) verifyUpdateFile() error {
 	u.ui.SetCurrentStep(4)
-	u.ui.UpdateDetail("업데이트 파일을 검증하고 있습니다...")
+	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.verifying"))
 	return u.hashManager.VerifyUpdateFile(u.updateFile)
 }
 
 func (u *Updater) extractUpdateFile() error {
 	u.ui.SetCurrentStep(5)
-	u.ui.UpdateDetail("파일을 압축해제하고 있습니다...")
+	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.installing"))
 
 	if err := u.fileManager.ExtractZip(u.updateFile); err != nil {
 		return err
@@ -233,14 +236,14 @@ func (u *Updater) extractUpdateFile() error {
 
 func (u *Updater) verifyExtractedFiles() error {
 	u.ui.SetCurrentStep(6)
-	u.ui.UpdateDetail("압축해제된 파일들을 검증하고 있습니다...")
+	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.finalizing"))
 	return u.hashManager.VerifyHashSum()
 }
 
 func (u *Updater) restartApplication() error {
 	// 마지막 단계 메시지 표시
 	u.ui.SetCurrentStep(u.ui.GetTotalSteps() - 1)
-	u.ui.UpdateDetail("업데이트가 완료되었습니다. 앱을 실행합니다...")
+	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.completed"))
 
 	// 프로그레스바가 100%까지 도달할 때까지 대기하기 위한 채널
 	completionCh := make(chan struct{})
@@ -274,7 +277,7 @@ func (u *Updater) restartApplication() error {
 // restartAfterRestore는 복원 완료 후 애플리케이션을 재시작합니다
 func (u *Updater) restartAfterRestore() error {
 	u.ui.SetCurrentStep(0)
-	u.ui.UpdateDetail("복원이 완료되었습니다. 앱을 재시작합니다...")
+	u.ui.UpdateDetail(u.i18n.GetMessage("update.restore.completed"))
 
 	// 잠시 대기하여 메시지가 표시되도록 함
 	time.Sleep(2 * time.Second)

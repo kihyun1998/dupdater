@@ -146,6 +146,7 @@ func main() {
 		NetworkManager:  networkManager,
 		FileManager:     fileManager,
 		HashManager:     hashManager,
+		I18n:            i18nManager,
 	})
 
 	// 11. 업데이트 프로세스 시작
