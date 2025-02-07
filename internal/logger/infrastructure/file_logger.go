@@ -83,7 +83,14 @@ func (f *FileLogger) Write(entry *entity.LogEntry) error {
 	return nil
 }
 
-// rotate는 로그 파일을 순환합니다.
+// Rotate는 로그 파일을 순환합니다.
+func (f *FileLogger) Rotate() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.rotate()
+}
+
+// rotate는 내부적으로 로그 파일을 순환하는 헬퍼 메서드입니다.
 func (f *FileLogger) rotate() error {
 	// 현재 파일 닫기
 	if err := f.file.Close(); err != nil {
@@ -128,13 +135,6 @@ func (f *FileLogger) rotate() error {
 	return nil
 }
 
-// Rotate는 수동으로 로그 파일을 순환합니다.
-func (f *FileLogger) Rotate() error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.rotate()
-}
-
 // Close는 로거를 정리합니다.
 func (f *FileLogger) Close() error {
 	f.mu.Lock()
@@ -150,18 +150,4 @@ func (f *FileLogger) Close() error {
 		f.file = nil
 	}
 	return nil
-}
-
-// GetCurrentSize는 현재 로그 파일의 크기를 반환합니다.
-func (f *FileLogger) GetCurrentSize() int64 {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-	return f.fileSize
-}
-
-// GetConfig는 현재 로거의 설정을 반환합니다.
-func (f *FileLogger) GetConfig() *repository.LogConfig {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-	return f.config
 }

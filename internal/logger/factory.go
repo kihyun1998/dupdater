@@ -2,7 +2,6 @@ package logger
 
 import (
 	"github.com/kihyun1998/dupdater/internal/logger/domain/entity"
-	"github.com/kihyun1998/dupdater/internal/logger/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/logger/domain/repository"
 	"github.com/kihyun1998/dupdater/internal/logger/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/logger/infrastructure"
@@ -16,8 +15,18 @@ type Config struct {
 	MaxBackups int             // 최대 백업 파일 수
 }
 
+// Logger는 로깅을 위한 인터페이스입니다.
+type Logger interface {
+	Info(format string, v ...interface{})
+	Error(format string, v ...interface{})
+	Debug(format string, v ...interface{})
+	Warn(format string, v ...interface{})
+	Fatal(format string, v ...interface{})
+	Close() error
+}
+
 // New는 새로운 로거 인스턴스를 생성합니다.
-func New(config Config) (ports.LoggerPort, error) {
+func New(config Config) (Logger, error) {
 	// 저장소 설정 생성
 	repoConfig := repository.NewLogConfig(
 		config.LogPath,

@@ -7,27 +7,26 @@ import (
 	"sync"
 
 	"github.com/kihyun1998/dupdater/internal/logger/domain/entity"
-	"github.com/kihyun1998/dupdater/internal/logger/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/logger/domain/repository"
 )
 
-// loggerService는 LoggerPort의 구현체입니다.
-type loggerService struct {
+// LoggerService는 로깅 서비스를 제공합니다.
+type LoggerService struct {
 	mu         sync.RWMutex
 	repository repository.LogRepository
 	level      entity.LogLevel
 }
 
 // NewLoggerService는 새로운 LoggerService 인스턴스를 생성합니다.
-func NewLoggerService(repo repository.LogRepository, level entity.LogLevel) ports.LoggerPort {
-	return &loggerService{
+func NewLoggerService(repo repository.LogRepository, level entity.LogLevel) *LoggerService {
+	return &LoggerService{
 		repository: repo,
 		level:      level,
 	}
 }
 
 // log는 실제 로깅을 수행하는 내부 메서드입니다.
-func (l *loggerService) log(level entity.LogLevel, format string, args ...interface{}) {
+func (l *LoggerService) log(level entity.LogLevel, format string, args ...interface{}) {
 	if level < l.level {
 		return
 	}
@@ -61,27 +60,27 @@ func (l *loggerService) log(level entity.LogLevel, format string, args ...interf
 	}
 }
 
-// LoggerPort 인터페이스 구현
-func (l *loggerService) Debug(format string, args ...interface{}) {
+// 공개 메서드들 구현
+func (l *LoggerService) Debug(format string, args ...interface{}) {
 	l.log(entity.DEBUG, format, args...)
 }
 
-func (l *loggerService) Info(format string, args ...interface{}) {
+func (l *LoggerService) Info(format string, args ...interface{}) {
 	l.log(entity.INFO, format, args...)
 }
 
-func (l *loggerService) Warn(format string, args ...interface{}) {
+func (l *LoggerService) Warn(format string, args ...interface{}) {
 	l.log(entity.WARN, format, args...)
 }
 
-func (l *loggerService) Error(format string, args ...interface{}) {
+func (l *LoggerService) Error(format string, args ...interface{}) {
 	l.log(entity.ERROR, format, args...)
 }
 
-func (l *loggerService) Fatal(format string, args ...interface{}) {
+func (l *LoggerService) Fatal(format string, args ...interface{}) {
 	l.log(entity.FATAL, format, args...)
 }
 
-func (l *loggerService) Close() error {
+func (l *LoggerService) Close() error {
 	return l.repository.Close()
 }
