@@ -2,22 +2,22 @@ package providers
 
 import "github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
 
-// KoreanProvider는 한국어 메시지를 제공하는 구조체입니다
+// KoreanProvider는 한국어 메시지를 제공하는 구현체입니다
 type KoreanProvider struct{}
 
 // NewKoreanProvider는 새로운 KoreanProvider 인스턴스를 생성합니다
-func NewKoreanProvider() *KoreanProvider {
+func NewKoreanProvider() entity.MessageProvider {
 	return &KoreanProvider{}
 }
 
-// GetLanguageCode는 언어 코드를 반환합니다
-func (p *KoreanProvider) GetLanguageCode() string {
-	return string(entity.Korean)
+// GetLanguage는 제공하는 언어 코드를 반환합니다
+func (p *KoreanProvider) GetLanguage() entity.Language {
+	return entity.Korean
 }
 
 // GetMessages는 한국어 메시지 맵을 반환합니다
-func (p *KoreanProvider) GetMessages() entity.MessageMap {
-	return entity.MessageMap{
+func (p *KoreanProvider) GetMessages() map[string]string {
+	return map[string]string{
 		// 업데이트 상태 메시지
 		"update.status.checking":     "앱 상태를 확인하고 있습니다...",
 		"update.status.getting_info": "업데이트 정보를 확인하고 있습니다...",

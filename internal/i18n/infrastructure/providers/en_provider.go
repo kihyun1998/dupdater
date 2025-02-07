@@ -1,24 +1,23 @@
-// Package providers는 각 언어별 메시지 제공자를 구현합니다
 package providers
 
 import "github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
 
-// EnglishProvider는 영어 메시지를 제공하는 구조체입니다
+// EnglishProvider는 영어 메시지를 제공하는 구현체입니다
 type EnglishProvider struct{}
 
 // NewEnglishProvider는 새로운 EnglishProvider 인스턴스를 생성합니다
-func NewEnglishProvider() *EnglishProvider {
+func NewEnglishProvider() entity.MessageProvider {
 	return &EnglishProvider{}
 }
 
-// GetLanguageCode는 언어 코드를 반환합니다
-func (p *EnglishProvider) GetLanguageCode() string {
-	return string(entity.English)
+// GetLanguage는 제공하는 언어 코드를 반환합니다
+func (p *EnglishProvider) GetLanguage() entity.Language {
+	return entity.English
 }
 
 // GetMessages는 영어 메시지 맵을 반환합니다
-func (p *EnglishProvider) GetMessages() entity.MessageMap {
-	return entity.MessageMap{
+func (p *EnglishProvider) GetMessages() map[string]string {
+	return map[string]string{
 		// Update Status Messages
 		"update.status.checking":     "Checking application status...",
 		"update.status.getting_info": "Getting update information...",

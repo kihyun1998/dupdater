@@ -2988,26 +2988,26 @@ func (l LogLevel) IsError() bool {
 ```go
 package ports
 
-// LoggerPort는 로깅 시스템의 외부 인터페이스를 정의합니다.
-type LoggerPort interface {
-	// Info는 정보성 메시지를 기록합니다.
-	Info(format string, v ...interface{})
+// // LoggerPort는 로깅 시스템의 외부 인터페이스를 정의합니다.
+// type LoggerPort interface {
+// 	// Info는 정보성 메시지를 기록합니다.
+// 	Info(format string, v ...interface{})
 
-	// Error는 에러 메시지를 기록합니다.
-	Error(format string, v ...interface{})
+// 	// Error는 에러 메시지를 기록합니다.
+// 	Error(format string, v ...interface{})
 
-	// Debug는 디버그 메시지를 기록합니다.
-	Debug(format string, v ...interface{})
+// 	// Debug는 디버그 메시지를 기록합니다.
+// 	Debug(format string, v ...interface{})
 
-	// Warn은 경고 메시지를 기록합니다.
-	Warn(format string, v ...interface{})
+// 	// Warn은 경고 메시지를 기록합니다.
+// 	Warn(format string, v ...interface{})
 
-	// Fatal은 치명적인 에러를 기록하고 프로그램을 종료합니다.
-	Fatal(format string, v ...interface{})
+// 	// Fatal은 치명적인 에러를 기록하고 프로그램을 종료합니다.
+// 	Fatal(format string, v ...interface{})
 
-	// Close는 로거를 정리합니다.
-	Close() error
-}
+// 	// Close는 로거를 정리합니다.
+// 	Close() error
+// }
 
 ```
 ## internal/logger/domain/repository/log_repository.go
@@ -3077,27 +3077,26 @@ import (
 	"sync"
 
 	"github.com/kihyun1998/dupdater/internal/logger/domain/entity"
-	"github.com/kihyun1998/dupdater/internal/logger/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/logger/domain/repository"
 )
 
-// loggerService는 LoggerPort의 구현체입니다.
-type loggerService struct {
+// LoggerService는 로깅 서비스를 제공합니다.
+type LoggerService struct {
 	mu         sync.RWMutex
 	repository repository.LogRepository
 	level      entity.LogLevel
 }
 
 // NewLoggerService는 새로운 LoggerService 인스턴스를 생성합니다.
-func NewLoggerService(repo repository.LogRepository, level entity.LogLevel) ports.LoggerPort {
-	return &loggerService{
+func NewLoggerService(repo repository.LogRepository, level entity.LogLevel) *LoggerService {
+	return &LoggerService{
 		repository: repo,
 		level:      level,
 	}
 }
 
 // log는 실제 로깅을 수행하는 내부 메서드입니다.
-func (l *loggerService) log(level entity.LogLevel, format string, args ...interface{}) {
+func (l *LoggerService) log(level entity.LogLevel, format string, args ...interface{}) {
 	if level < l.level {
 		return
 	}
@@ -3131,28 +3130,28 @@ func (l *loggerService) log(level entity.LogLevel, format string, args ...interf
 	}
 }
 
-// LoggerPort 인터페이스 구현
-func (l *loggerService) Debug(format string, args ...interface{}) {
+// 공개 메서드들 구현
+func (l *LoggerService) Debug(format string, args ...interface{}) {
 	l.log(entity.DEBUG, format, args...)
 }
 
-func (l *loggerService) Info(format string, args ...interface{}) {
+func (l *LoggerService) Info(format string, args ...interface{}) {
 	l.log(entity.INFO, format, args...)
 }
 
-func (l *loggerService) Warn(format string, args ...interface{}) {
+func (l *LoggerService) Warn(format string, args ...interface{}) {
 	l.log(entity.WARN, format, args...)
 }
 
-func (l *loggerService) Error(format string, args ...interface{}) {
+func (l *LoggerService) Error(format string, args ...interface{}) {
 	l.log(entity.ERROR, format, args...)
 }
 
-func (l *loggerService) Fatal(format string, args ...interface{}) {
+func (l *LoggerService) Fatal(format string, args ...interface{}) {
 	l.log(entity.FATAL, format, args...)
 }
 
-func (l *loggerService) Close() error {
+func (l *LoggerService) Close() error {
 	return l.repository.Close()
 }
 
@@ -3163,7 +3162,6 @@ package logger
 
 import (
 	"github.com/kihyun1998/dupdater/internal/logger/domain/entity"
-	"github.com/kihyun1998/dupdater/internal/logger/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/logger/domain/repository"
 	"github.com/kihyun1998/dupdater/internal/logger/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/logger/infrastructure"
@@ -3177,8 +3175,18 @@ type Config struct {
 	MaxBackups int             // 최대 백업 파일 수
 }
 
+// Logger는 로깅을 위한 인터페이스입니다.
+type Logger interface {
+	Info(format string, v ...interface{})
+	Error(format string, v ...interface{})
+	Debug(format string, v ...interface{})
+	Warn(format string, v ...interface{})
+	Fatal(format string, v ...interface{})
+	Close() error
+}
+
 // New는 새로운 로거 인스턴스를 생성합니다.
-func New(config Config) (ports.LoggerPort, error) {
+func New(config Config) (Logger, error) {
 	// 저장소 설정 생성
 	repoConfig := repository.NewLogConfig(
 		config.LogPath,
@@ -3284,7 +3292,14 @@ func (f *FileLogger) Write(entry *entity.LogEntry) error {
 	return nil
 }
 
-// rotate는 로그 파일을 순환합니다.
+// Rotate는 로그 파일을 순환합니다.
+func (f *FileLogger) Rotate() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.rotate()
+}
+
+// rotate는 내부적으로 로그 파일을 순환하는 헬퍼 메서드입니다.
 func (f *FileLogger) rotate() error {
 	// 현재 파일 닫기
 	if err := f.file.Close(); err != nil {
@@ -3329,13 +3344,6 @@ func (f *FileLogger) rotate() error {
 	return nil
 }
 
-// Rotate는 수동으로 로그 파일을 순환합니다.
-func (f *FileLogger) Rotate() error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.rotate()
-}
-
 // Close는 로거를 정리합니다.
 func (f *FileLogger) Close() error {
 	f.mu.Lock()
@@ -3351,20 +3359,6 @@ func (f *FileLogger) Close() error {
 		f.file = nil
 	}
 	return nil
-}
-
-// GetCurrentSize는 현재 로그 파일의 크기를 반환합니다.
-func (f *FileLogger) GetCurrentSize() int64 {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-	return f.fileSize
-}
-
-// GetConfig는 현재 로거의 설정을 반환합니다.
-func (f *FileLogger) GetConfig() *repository.LogConfig {
-	f.mu.RLock()
-	defer f.mu.RUnlock()
-	return f.config
 }
 
 ```
@@ -3987,7 +3981,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	i18nPort "github.com/kihyun1998/dupdater/internal/i18n/domain/ports"
-	logPort "github.com/kihyun1998/dupdater/internal/logger/domain/ports"
+	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/ui/components"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
 )
@@ -4004,7 +3998,7 @@ type State struct {
 type Manager struct {
 	app        fyne.App
 	mainWindow fyne.Window
-	logger     logPort.LoggerPort
+	logger     logger.Logger
 	i18n       i18nPort.LocalePort
 
 	totalSteps   int
@@ -4023,7 +4017,7 @@ type Config struct {
 	TotalSteps  int
 	FromVersion string
 	ToVersion   string
-	Logger      logPort.LoggerPort
+	Logger      logger.Logger
 	Theme       theme.ThemeVariant
 	I18n        i18nPort.LocalePort
 }

@@ -1,74 +1,84 @@
-// Package i18n은 다국어 지원 시스템의 진입점을 제공합니다
+// factory.go
 package i18n
 
 import (
 	"fmt"
 
 	"github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
-	"github.com/kihyun1998/dupdater/internal/i18n/domain/ports"
 	"github.com/kihyun1998/dupdater/internal/i18n/domain/repository"
 	"github.com/kihyun1998/dupdater/internal/i18n/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/i18n/infrastructure"
 	"github.com/kihyun1998/dupdater/internal/i18n/infrastructure/providers"
 )
 
-// Factory는 i18n 시스템의 컴포넌트들을 생성하고 관리합니다
-type Factory struct {
-	config *ports.LocaleConfig
+// Manager는 다국어 지원을 위한 인터페이스입니다
+type Manager interface {
+	GetMessage(key string) string
+	SetLanguage(lang string) error
+	GetCurrentLanguage() string
 }
 
-// NewFactory는 새로운 Factory 인스턴스를 생성합니다
-func NewFactory(config *ports.LocaleConfig) (*Factory, error) {
-	if err := config.Validate(); err != nil {
-		return nil, fmt.Errorf("설정 검증 실패: %w", err)
+// Config는 Manager 생성에 필요한 설정입니다
+type Config struct {
+	DefaultLanguage string // 기본 언어 설정
+	Logger          repository.Logger
+}
+
+// managerImpl은 Manager 인터페이스 구현체입니다
+type managerImpl struct {
+	service *usecase.I18nService
+}
+
+// New는 새로운 Manager 인스턴스를 생성합니다
+func New(config Config) (Manager, error) {
+	// 설정 검증
+	if config.DefaultLanguage == "" {
+		config.DefaultLanguage = string(entity.DefaultLanguage)
 	}
 
-	return &Factory{
-		config: config,
-	}, nil
-}
-
-// Create는 i18n 시스템의 인스턴스를 생성하고 초기화합니다
-func (f *Factory) Create() (ports.LocalePort, error) {
-	// 1. 저장소 설정 생성
+	// 저장소 설정
 	repoConfig := &repository.Config{
-		DefaultLocale: entity.NewLocale(entity.Language(f.config.DefaultLang), "Default"),
+		DefaultLanguage: entity.Language(config.DefaultLanguage),
+		Logger:          config.Logger,
 	}
 
-	// 2. 메시지 저장소 생성
-	messageStore, err := infrastructure.NewMessageStore(repoConfig)
-	if err != nil {
-		return nil, fmt.Errorf("메시지 저장소 생성 실패: %w", err)
-	}
+	// 저장소 생성
+	store := infrastructure.NewI18nStore(repoConfig)
 
-	// 3. 기본 메시지 제공자 등록
-	providers := []entity.MessageProvider{
+	// 서비스 생성
+	service := usecase.NewI18nService(store, config.Logger)
+
+	// 기본 메시지 제공자 등록
+	defaultProviders := []entity.MessageProvider{
 		providers.NewKoreanProvider(),
 		providers.NewEnglishProvider(),
 	}
 
-	for _, provider := range providers {
-		if err := messageStore.RegisterProvider(provider); err != nil {
+	for _, provider := range defaultProviders {
+		if err := service.RegisterProvider(provider); err != nil {
 			return nil, fmt.Errorf("메시지 제공자 등록 실패: %w", err)
 		}
 	}
 
-	// 4. 로케일 서비스 생성
-	localeService := usecase.NewLocaleService(messageStore, f.config.DefaultLang)
-
-	// 5. 초기 언어 설정
-	if err := localeService.SetLanguage(f.config.DefaultLang); err != nil {
+	// 초기 언어 설정
+	if err := service.SetLanguage(config.DefaultLanguage); err != nil {
 		return nil, fmt.Errorf("초기 언어 설정 실패: %w", err)
 	}
 
-	return localeService, nil
+	return &managerImpl{
+		service: service,
+	}, nil
 }
 
-// New는 i18n 시스템의 새 인스턴스를 생성하는 편의 함수입니다
-func New(config ports.LocaleConfig) (ports.LocalePort, error) {
-	factory, err := NewFactory(&config)
-	if err != nil {
-		return nil, err
-	}
-	return factory.Create()
+// Manager 인터페이스 구현
+func (m *managerImpl) GetMessage(key string) string {
+	return m.service.GetMessage(key)
+}
+
+func (m *managerImpl) SetLanguage(lang string) error {
+	return m.service.SetLanguage(lang)
+}
+
+func (m *managerImpl) GetCurrentLanguage() string {
+	return m.service.GetCurrentLanguage()
 }
