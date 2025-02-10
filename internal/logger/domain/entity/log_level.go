@@ -25,8 +25,3 @@ func (l LogLevel) String() string {
 func (l LogLevel) IsValid() bool {
 	return l >= DEBUG && l <= FATAL
 }
-
-// IsError는 현재 로그 레벨이 에러 수준인지 확인합니다.
-func (l LogLevel) IsError() bool {
-	return l >= ERROR
-}

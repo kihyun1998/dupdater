@@ -30,12 +30,6 @@ func NewLogEntry(level LogLevel, message string, callerInfo string) *LogEntry {
 	}
 }
 
-// WithField는 로그 엔트리에 필드를 추가합니다.
-func (e *LogEntry) WithField(key string, value interface{}) *LogEntry {
-	e.Fields[key] = value
-	return e
-}
-
 // Format은 로그 엔트리를 문자열로 포맷팅합니다.
 func (e *LogEntry) Format() string {
 	base := fmt.Sprintf("[%s] %s [%s] %s",
