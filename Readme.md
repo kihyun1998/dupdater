@@ -4,6 +4,14 @@
 fyne package -icon icon.png -name updater
 ```
 
+## 폰트 gen
+
+```bash
+# fonts 패키지로 직접 생성
+fyne bundle -package fonts -o internal/ui/fonts/regular.go assets/fonts/Pretendard-Regular.ttf
+fyne bundle -package fonts -o internal/ui/fonts/bold.go assets/fonts/Pretendard-Bold.ttf
+fyne bundle -package fonts -o internal/ui/fonts/medium.go assets/fonts/Pretendard-Medium.ttf
+```
 
 ## 커스텀 아이콘 사용하는 방법
 

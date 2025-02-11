@@ -11,3 +11,7 @@ CODE.md
 Readme.md
 command.md
 plan.md
+internal/ui/fonts/bold.go
+internal/ui/fonts/medium.go
+internal/ui/fonts/regular.go
+assets/

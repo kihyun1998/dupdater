@@ -5,6 +5,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	baseTheme "fyne.io/fyne/v2/theme"
+	"github.com/kihyun1998/dupdater/internal/ui/fonts"
 )
 
 // ThemeVariant는 테마의 색상과 스타일을 정의하는 인터페이스입니다
@@ -79,11 +80,15 @@ func (t *CustomTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
 	return baseTheme.DarkTheme().Icon(name)
 }
 
+// Font는 textStyle에 따른 폰트를 반환합니다
 func (t *CustomTheme) Font(style fyne.TextStyle) fyne.Resource {
-	if t.variant.IsLight() {
-		return baseTheme.LightTheme().Font(style)
+	if style.Bold {
+		return fonts.PretendardBold
 	}
-	return baseTheme.DarkTheme().Font(style)
+	if style.Italic {
+		return fonts.PretendardMedium
+	}
+	return fonts.PretendardRegular
 }
 
 func (t *CustomTheme) Size(name fyne.ThemeSizeName) float32 {
