@@ -94,10 +94,10 @@ func (m *Manager) initializeUI(config Config) {
 
 	// 배경색 설정
 	content := container.NewPadded(m.statusCard)
-	content.Resize(fyne.NewSize(400, 200))
+	content.Resize(fyne.NewSize(400, 150))
 
 	m.mainWindow.SetContent(content)
-	m.mainWindow.Resize(fyne.NewSize(400, 200))
+	m.mainWindow.Resize(fyne.NewSize(400, 150))
 	m.mainWindow.CenterOnScreen()
 	m.mainWindow.SetFixedSize(true)
 }
