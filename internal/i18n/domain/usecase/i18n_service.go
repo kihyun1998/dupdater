@@ -6,17 +6,18 @@ import (
 
 	"github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/i18n/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/logger"
 )
 
 // I18nService는 다국어 지원의 비즈니스 로직을 구현합니다
 type I18nService struct {
 	repo   repository.I18nRepository
-	logger repository.Logger
+	logger logger.Logger
 	mu     sync.RWMutex
 }
 
 // NewI18nService는 새로운 I18nService 인스턴스를 생성합니다
-func NewI18nService(repo repository.I18nRepository, logger repository.Logger) *I18nService {
+func NewI18nService(repo repository.I18nRepository, logger logger.Logger) *I18nService {
 	return &I18nService{
 		repo:   repo,
 		logger: logger,

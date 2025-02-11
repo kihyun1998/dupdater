@@ -9,6 +9,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/i18n/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/i18n/infrastructure"
 	"github.com/kihyun1998/dupdater/internal/i18n/infrastructure/providers"
+	"github.com/kihyun1998/dupdater/internal/logger"
 )
 
 // Manager는 다국어 지원을 위한 인터페이스입니다
@@ -21,7 +22,7 @@ type Manager interface {
 // Config는 Manager 생성에 필요한 설정입니다
 type Config struct {
 	DefaultLanguage string // 기본 언어 설정
-	Logger          repository.Logger
+	Logger          logger.Logger
 }
 
 // managerImpl은 Manager 인터페이스 구현체입니다

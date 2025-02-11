@@ -1,6 +1,9 @@
 package repository
 
-import "github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
+import (
+	"github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/logger"
+)
 
 // I18nRepository는 다국어 지원을 위한 저장소 인터페이스입니다
 type I18nRepository interface {
@@ -20,11 +23,5 @@ type I18nRepository interface {
 // Config는 저장소 설정을 정의합니다
 type Config struct {
 	DefaultLanguage entity.Language
-	Logger          Logger
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
+	Logger          logger.Logger
 }

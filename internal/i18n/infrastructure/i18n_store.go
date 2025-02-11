@@ -6,13 +6,14 @@ import (
 
 	"github.com/kihyun1998/dupdater/internal/i18n/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/i18n/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/logger"
 )
 
 // I18nStore는 메모리 기반 다국어 저장소입니다
 type I18nStore struct {
 	currentLang entity.Language
 	messages    map[entity.Language]map[string]string
-	logger      repository.Logger
+	logger      logger.Logger
 	mu          sync.RWMutex
 }
 
