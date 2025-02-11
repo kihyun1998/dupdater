@@ -16,11 +16,13 @@ import (
 // StatusCard는 현재 상태를 표시하는 컴포넌트입니다
 type StatusCard struct {
 	widget.BaseWidget
-	container    *fyne.Container
+	container   *fyne.Container
+	progressBar *widget.ProgressBar
+
 	titleText    *canvas.Text
 	versionText  *canvas.Text
-	progressBar  *widget.ProgressBar
 	subtitleText *canvas.Text
+
 	currentTheme theme.ThemeVariant
 	i18n         i18n.Manager
 
