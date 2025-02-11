@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/version/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/version/domain/repository"
 )
@@ -13,7 +14,7 @@ import (
 type VersionStore struct {
 	fromVersion *entity.Version
 	toVersion   *entity.Version
-	logger      repository.Logger
+	logger      logger.Logger
 	mu          sync.RWMutex
 }
 

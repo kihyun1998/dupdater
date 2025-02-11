@@ -4,17 +4,18 @@ package usecase
 import (
 	"fmt"
 
+	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/version/domain/repository"
 )
 
 // VersionService는 버전 관리의 비즈니스 로직을 구현합니다
 type VersionService struct {
 	repo   repository.VersionRepository
-	logger repository.Logger
+	logger logger.Logger
 }
 
 // NewVersionService는 새로운 VersionService 인스턴스를 생성합니다
-func NewVersionService(repo repository.VersionRepository, logger repository.Logger) *VersionService {
+func NewVersionService(repo repository.VersionRepository, logger logger.Logger) *VersionService {
 	return &VersionService{
 		repo:   repo,
 		logger: logger,

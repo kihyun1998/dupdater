@@ -1,7 +1,10 @@
 // domain/repository/version_repo.go
 package repository
 
-import "github.com/kihyun1998/dupdater/internal/version/domain/entity"
+import (
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/version/domain/entity"
+)
 
 // VersionRepository는 버전 관리를 위한 저장소 인터페이스입니다
 type VersionRepository interface {
@@ -23,13 +26,7 @@ type VersionRepository interface {
 
 // Config는 저장소 설정을 정의합니다
 type Config struct {
-	FromVersion string // 현재 버전
-	ToVersion   string // 대상 버전
-	Logger      Logger // 로거 인터페이스
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
+	FromVersion string        // 현재 버전
+	ToVersion   string        // 대상 버전
+	Logger      logger.Logger // 로거 인터페이스
 }
