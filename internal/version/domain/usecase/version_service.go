@@ -1,4 +1,3 @@
-// domain/usecase/version_service.go
 package usecase
 
 import (

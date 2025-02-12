@@ -72,7 +72,13 @@ func (v *Version) IsNewer(other *Version) bool {
 	if v.Minor != other.Minor {
 		return v.Minor > other.Minor
 	}
-	return v.Patch > other.Patch
+	if v.Patch != other.Patch {
+		return v.Patch > other.Patch
+	}
+	if v.Date != other.Date {
+		return v.Date.After(other.Date)
+	}
+	return false
 }
 
 // Validate는 버전 정보가 유효한지 검증합니다

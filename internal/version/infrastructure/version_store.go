@@ -1,4 +1,3 @@
-// infrastructure/version_store.go
 package infrastructure
 
 import (
