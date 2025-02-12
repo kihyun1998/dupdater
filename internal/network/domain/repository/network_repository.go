@@ -9,7 +9,7 @@ import (
 // NetworkRepository는 네트워크 작업을 추상화하는 인터페이스입니다
 type NetworkRepository interface {
 	// LoadServerConfig는 설정 파일에서 서버 설정을 로드합니다
-	LoadServerConfig(configPath string) (*entity.ServerConfig, error)
+	LoadServerConfig(configPath, serverName string) (*entity.ServerConfig, error)
 
 	// FetchUpdateFileName은 서버로부터 업데이트 파일명을 조회합니다
 	FetchUpdateFileName(serverIP string) (*entity.UpdateFile, error)

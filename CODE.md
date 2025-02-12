@@ -3209,7 +3209,7 @@ import (
 // NetworkRepository는 네트워크 작업을 추상화하는 인터페이스입니다
 type NetworkRepository interface {
 	// LoadServerConfig는 설정 파일에서 서버 설정을 로드합니다
-	LoadServerConfig(configPath string) (*entity.ServerConfig, error)
+	LoadServerConfig(configPath, serverName string) (*entity.ServerConfig, error)
 
 	// FetchUpdateFileName은 서버로부터 업데이트 파일명을 조회합니다
 	FetchUpdateFileName(serverIP string) (*entity.UpdateFile, error)
@@ -3231,23 +3231,18 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network/domain/repository"
 )
 
 // NetworkService는 네트워크 작업의 비즈니스 로직을 구현합니다
 type NetworkService struct {
 	repo   repository.NetworkRepository
-	logger Logger
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
+	logger logger.Logger
 }
 
 // NewNetworkService는 새로운 NetworkService 인스턴스를 생성합니다
-func NewNetworkService(repo repository.NetworkRepository, logger Logger) *NetworkService {
+func NewNetworkService(repo repository.NetworkRepository, logger logger.Logger) *NetworkService {
 	return &NetworkService{
 		repo:   repo,
 		logger: logger,
@@ -3271,7 +3266,7 @@ func (s *NetworkService) GetServerIP(serverName string) (string, error) {
 
 	// 설정 파일 경로 설정 및 로드
 	configPath := filepath.Join(homeDir, ".testfolder", "config.json")
-	config, err := s.repo.LoadServerConfig(configPath)
+	config, err := s.repo.LoadServerConfig(configPath, serverName)
 	if err != nil {
 		return "", fmt.Errorf("서버 설정 로드 실패: %w", err)
 	}
@@ -3324,6 +3319,7 @@ package network
 import (
 	"net/http"
 
+	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/network/infrastructure/repository"
 )
@@ -3337,13 +3333,7 @@ type Manager interface {
 
 // Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
 type Config struct {
-	Logger Logger
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
+	Logger logger.Logger
 }
 
 // networkManager는 Manager 인터페이스를 구현하는 구조체입니다
@@ -3401,6 +3391,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/network/domain/repository"
 )
@@ -3408,17 +3399,11 @@ import (
 // HTTPRepository는 HTTP 기반의 네트워크 작업을 구현합니다
 type HTTPRepository struct {
 	client *http.Client
-	logger Logger
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
+	logger logger.Logger
 }
 
 // NewHTTPRepository는 새로운 HTTPRepository 인스턴스를 생성합니다
-func NewHTTPRepository(logger Logger) repository.NetworkRepository {
+func NewHTTPRepository(logger logger.Logger) repository.NetworkRepository {
 	return &HTTPRepository{
 		client: &http.Client{},
 		logger: logger,
@@ -3426,31 +3411,30 @@ func NewHTTPRepository(logger Logger) repository.NetworkRepository {
 }
 
 // LoadServerConfig는 설정 파일에서 서버 설정을 로드합니다
-func (r *HTTPRepository) LoadServerConfig(configPath string) (*entity.ServerConfig, error) {
+func (r *HTTPRepository) LoadServerConfig(configPath, serverName string) (*entity.ServerConfig, error) {
 	file, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("설정 파일 읽기 실패: %w", err)
 	}
 
 	var config struct {
-		ProfileList []struct {
-			Name string `json:"name"`
-			IP   string `json:"ip"`
+		ProfileList map[string]struct {
+			Name    string `json:"name"`
+			Address string `json:"address"`
 		} `json:"profileList"`
 	}
+
 	if err := json.Unmarshal(file, &config); err != nil {
 		return nil, fmt.Errorf("설정 파일 파싱 실패: %w", err)
 	}
 
-	for _, profile := range config.ProfileList {
-		if profile.Name == "server1" {
-			return &entity.ServerConfig{
-				Profile: entity.Profile{
-					Name: profile.Name,
-					IP:   profile.IP,
-				},
-			}, nil
-		}
+	if profile, exists := config.ProfileList[serverName]; exists {
+		return &entity.ServerConfig{
+			Profile: entity.Profile{
+				Name: profile.Name,
+				IP:   profile.Address,
+			},
+		}, nil
 	}
 
 	return nil, fmt.Errorf("서버 프로필을 찾을 수 없음: server1")
@@ -3587,11 +3571,13 @@ import (
 // StatusCard는 현재 상태를 표시하는 컴포넌트입니다
 type StatusCard struct {
 	widget.BaseWidget
-	container    *fyne.Container
+	container   *fyne.Container
+	progressBar *widget.ProgressBar
+
 	titleText    *canvas.Text
 	versionText  *canvas.Text
-	progressBar  *widget.ProgressBar
 	subtitleText *canvas.Text
+
 	currentTheme theme.ThemeVariant
 	i18n         i18n.Manager
 
@@ -3873,10 +3859,10 @@ func (m *Manager) initializeUI(config Config) {
 
 	// 배경색 설정
 	content := container.NewPadded(m.statusCard)
-	content.Resize(fyne.NewSize(400, 200))
+	content.Resize(fyne.NewSize(400, 150))
 
 	m.mainWindow.SetContent(content)
-	m.mainWindow.Resize(fyne.NewSize(400, 200))
+	m.mainWindow.Resize(fyne.NewSize(400, 150))
 	m.mainWindow.CenterOnScreen()
 	m.mainWindow.SetFixedSize(true)
 }
@@ -4442,7 +4428,13 @@ func (v *Version) IsNewer(other *Version) bool {
 	if v.Minor != other.Minor {
 		return v.Minor > other.Minor
 	}
-	return v.Patch > other.Patch
+	if v.Patch != other.Patch {
+		return v.Patch > other.Patch
+	}
+	if v.Date != other.Date {
+		return v.Date.After(other.Date)
+	}
+	return false
 }
 
 // Validate는 버전 정보가 유효한지 검증합니다
@@ -4462,10 +4454,12 @@ func (v *Version) Validate() error {
 ```
 ## internal/version/domain/repository/version_repo.go
 ```go
-// domain/repository/version_repo.go
 package repository
 
-import "github.com/kihyun1998/dupdater/internal/version/domain/entity"
+import (
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/version/domain/entity"
+)
 
 // VersionRepository는 버전 관리를 위한 저장소 인터페이스입니다
 type VersionRepository interface {
@@ -4475,49 +4469,37 @@ type VersionRepository interface {
 	// GetToVersion은 대상 버전 정보를 조회합니다
 	GetToVersion() *entity.Version
 
-	// SaveFromVersion은 현재 버전 정보를 저장합니다
-	SaveFromVersion(version *entity.Version) error
-
-	// SaveToVersion은 대상 버전 정보를 저장합니다
-	SaveToVersion(version *entity.Version) error
-
 	// ValidateVersions는 버전 정보의 유효성을 검증합니다
 	ValidateVersions() error
 }
 
 // Config는 저장소 설정을 정의합니다
 type Config struct {
-	FromVersion string // 현재 버전
-	ToVersion   string // 대상 버전
-	Logger      Logger // 로거 인터페이스
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
+	FromVersion string        // 현재 버전
+	ToVersion   string        // 대상 버전
+	Logger      logger.Logger // 로거 인터페이스
 }
 
 ```
 ## internal/version/domain/usecase/version_service.go
 ```go
-// domain/usecase/version_service.go
 package usecase
 
 import (
 	"fmt"
 
+	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/version/domain/repository"
 )
 
 // VersionService는 버전 관리의 비즈니스 로직을 구현합니다
 type VersionService struct {
 	repo   repository.VersionRepository
-	logger repository.Logger
+	logger logger.Logger
 }
 
 // NewVersionService는 새로운 VersionService 인스턴스를 생성합니다
-func NewVersionService(repo repository.VersionRepository, logger repository.Logger) *VersionService {
+func NewVersionService(repo repository.VersionRepository, logger logger.Logger) *VersionService {
 	return &VersionService{
 		repo:   repo,
 		logger: logger,
@@ -4553,25 +4535,13 @@ func (s *VersionService) ValidateVersions() error {
 	return nil
 }
 
-// IsUpdateRequired는 업데이트가 필요한지 확인합니다
-func (s *VersionService) IsUpdateRequired() bool {
-	fromVersion := s.repo.GetFromVersion()
-	toVersion := s.repo.GetToVersion()
-
-	if fromVersion == nil || toVersion == nil {
-		s.logger.Error("버전 정보가 없어 업데이트 필요 여부를 확인할 수 없습니다")
-		return false
-	}
-
-	return toVersion.IsNewer(fromVersion)
-}
-
 ```
 ## internal/version/factory.go
 ```go
 package version
 
 import (
+	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/version/domain/repository"
 	"github.com/kihyun1998/dupdater/internal/version/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/version/infrastructure"
@@ -4588,15 +4558,9 @@ type Manager interface {
 
 // Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
 type Config struct {
-	Logger      Logger
+	Logger      logger.Logger
 	FromVersion string
 	ToVersion   string
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
 }
 
 // managerImpl은 Manager 인터페이스의 구현체입니다
@@ -4645,13 +4609,13 @@ func (m *managerImpl) GetToVersion() string {
 ```
 ## internal/version/infrastructure/version_store.go
 ```go
-// infrastructure/version_store.go
 package infrastructure
 
 import (
 	"fmt"
 	"sync"
 
+	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/version/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/version/domain/repository"
 )
@@ -4660,7 +4624,7 @@ import (
 type VersionStore struct {
 	fromVersion *entity.Version
 	toVersion   *entity.Version
-	logger      repository.Logger
+	logger      logger.Logger
 	mu          sync.RWMutex
 }
 
@@ -4695,34 +4659,6 @@ func (s *VersionStore) GetToVersion() *entity.Version {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.toVersion
-}
-
-// SaveFromVersion은 현재 버전을 저장합니다
-func (s *VersionStore) SaveFromVersion(version *entity.Version) error {
-	if err := version.Validate(); err != nil {
-		return fmt.Errorf("현재 버전 검증 실패: %w", err)
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.fromVersion = version
-	s.logger.Info("현재 버전이 업데이트됨: %s", version.String())
-	return nil
-}
-
-// SaveToVersion은 대상 버전을 저장합니다
-func (s *VersionStore) SaveToVersion(version *entity.Version) error {
-	if err := version.Validate(); err != nil {
-		return fmt.Errorf("대상 버전 검증 실패: %w", err)
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.toVersion = version
-	s.logger.Info("대상 버전이 업데이트됨: %s", version.String())
-	return nil
 }
 
 // ValidateVersions는 버전 정보의 유효성을 검증합니다

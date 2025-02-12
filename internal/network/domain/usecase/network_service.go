@@ -42,7 +42,7 @@ func (s *NetworkService) GetServerIP(serverName string) (string, error) {
 
 	// 설정 파일 경로 설정 및 로드
 	configPath := filepath.Join(homeDir, ".testfolder", "config.json")
-	config, err := s.repo.LoadServerConfig(configPath)
+	config, err := s.repo.LoadServerConfig(configPath, serverName)
 	if err != nil {
 		return "", fmt.Errorf("서버 설정 로드 실패: %w", err)
 	}
