@@ -11,16 +11,13 @@ dupdater/
     │   └── updater.go
     ├── file/
     │   ├── domain/
-    │   │   ├── entity/
-    │   │   │   └── file_info.go
     │   │   ├── repository/
     │   │   │   └── file_repository.go
     │   │   └── usecase/
     │   │   │   └── file_service.go
     │   ├── infrastructure/
     │   │   └── local_file_repository.go
-    │   ├── factory.go
-    │   └── manager.go
+    │   └── factory.go
     ├── hash/
     │   ├── domain/
     │   │   ├── entity/
@@ -732,65 +729,12 @@ type UIManager interface {
 }
 
 ```
-## internal/file/domain/entity/file_info.go
-```go
-// Package entity는 파일 도메인의 핵심 개념을 정의합니다
-package entity
-
-import (
-	"os"
-	"time"
-)
-
-// FileInfo는 파일의 메타데이터 정보를 담는 도메인 엔티티입니다
-type FileInfo struct {
-	Path        string      // 파일 경로
-	Name        string      // 파일 이름
-	Size        int64       // 파일 크기
-	ModTime     time.Time   // 수정 시간
-	IsDirectory bool        // 디렉토리 여부
-	Mode        os.FileMode // 파일 권한
-}
-
-// NewFileInfo는 새로운 FileInfo 인스턴스를 생성합니다
-func NewFileInfo(info os.FileInfo, path string) *FileInfo {
-	return &FileInfo{
-		Path:        path,
-		Name:        info.Name(),
-		Size:        info.Size(),
-		ModTime:     info.ModTime(),
-		IsDirectory: info.IsDir(),
-		Mode:        info.Mode(),
-	}
-}
-
-// BackupInfo는 백업 작업에 관련된 정보를 담는 도메인 엔티티입니다
-type BackupInfo struct {
-	SourcePath      string    // 원본 경로
-	BackupPath      string    // 백업 경로
-	BackupTime      time.Time // 백업 시간
-	IsBackupSuccess bool      // 백업 성공 여부
-}
-
-// NewBackupInfo는 새로운 BackupInfo 인스턴스를 생성합니다
-func NewBackupInfo(sourcePath, backupPath string) *BackupInfo {
-	return &BackupInfo{
-		SourcePath: sourcePath,
-		BackupPath: backupPath,
-		BackupTime: time.Now(),
-	}
-}
-
-// SetBackupResult는 백업 결과를 설정합니다
-func (b *BackupInfo) SetBackupResult(success bool) {
-	b.IsBackupSuccess = success
-}
-
-```
 ## internal/file/domain/repository/file_repository.go
 ```go
 // Package repository는 파일 시스템 작업을 위한 인터페이스를 정의합니다
 package repository
+
+import "github.com/kihyun1998/dupdater/internal/logger"
 
 // FileRepository는 파일 시스템 작업을 추상화하는 인터페이스입니다
 type FileRepository interface {
@@ -812,15 +756,9 @@ type FileRepository interface {
 
 // Config는 FileRepository 생성에 필요한 설정을 정의합니다
 type Config struct {
-	BackupDir  string // 백업 디렉토리 경로
-	CurrentDir string // 현재 작업 디렉토리
-	Logger     Logger // 로거 인터페이스
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
+	BackupDir  string        // 백업 디렉토리 경로
+	CurrentDir string        // 현재 작업 디렉토리
+	Logger     logger.Logger // 로거 인터페이스
 }
 
 ```
@@ -833,16 +771,17 @@ import (
 	"fmt"
 
 	"github.com/kihyun1998/dupdater/internal/file/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/logger"
 )
 
 // FileService는 파일 관리의 비즈니스 로직을 구현합니다
 type FileService struct {
 	repo   repository.FileRepository
-	logger repository.Logger
+	logger logger.Logger
 }
 
 // NewFileService는 새로운 FileService 인스턴스를 생성합니다
-func NewFileService(repo repository.FileRepository, logger repository.Logger) *FileService {
+func NewFileService(repo repository.FileRepository, logger logger.Logger) *FileService {
 	return &FileService{
 		repo:   repo,
 		logger: logger,
@@ -912,6 +851,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/file/domain/repository"
 	"github.com/kihyun1998/dupdater/internal/file/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/file/infrastructure"
+	"github.com/kihyun1998/dupdater/internal/logger"
 )
 
 // Manager는 파일 관리를 위한 인터페이스입니다
@@ -925,15 +865,9 @@ type Manager interface {
 
 // Config는 Manager 생성에 필요한 설정입니다
 type Config struct {
-	Logger     Logger
+	Logger     logger.Logger
 	BackupDir  string
 	CurrentDir string
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
 }
 
 // manager는 Manager 인터페이스의 구현체입니다
@@ -1342,397 +1276,6 @@ func (r *LocalFileRepository) backupFile(src, dest string) error {
 }
 
 // ------------------------------------------------------------------
-
-```
-## internal/file/manager.go
-```go
-// // Package file은 파일 시스템 작업을 담당하는 패키지입니다
-package file
-
-// import (
-// 	"archive/zip"
-// 	"fmt"
-// 	"io"
-// 	"os"
-// 	"path/filepath"
-// 	"time"
-// )
-
-// // Manager는 파일 시스템 작업을 관리하는 구조체입니다
-// type Manager struct {
-// 	logger     Logger // 로깅을 위한 인터페이스
-// 	backupDir  string // 백업 디렉토리 경로
-// 	currentDir string // 현재 작업 디렉토리
-// }
-
-// // Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
-// type Config struct {
-// 	Logger     Logger
-// 	BackupDir  string // 백업 디렉토리 경로 (기본값: %TEMP%/ACRABACK)
-// 	CurrentDir string // 현재 작업 디렉토리
-// }
-
-// // New는 새로운 Manager 인스턴스를 생성합니다
-// func New(config Config) (*Manager, error) {
-// 	if config.BackupDir == "" {
-// 		config.BackupDir = filepath.Join(os.TempDir(), "ACRABACK")
-// 	}
-
-// 	if config.CurrentDir == "" {
-// 		dir, err := os.Getwd()
-// 		if err != nil {
-// 			return nil, fmt.Errorf("현재 디렉토리 확인 실패: %w", err)
-// 		}
-// 		config.CurrentDir = dir
-// 	}
-
-// 	return &Manager{
-// 		logger:     config.Logger,
-// 		backupDir:  config.BackupDir,
-// 		currentDir: config.CurrentDir,
-// 	}, nil
-// }
-
-// // Backup은 현재 디렉토리의 파일들을 백업합니다
-// func (m *Manager) Backup() error {
-// 	// 패닉 복구
-// 	defer func() {
-// 		if r := recover(); r != nil {
-// 			m.logger.Error("Backup 함수에서 패닉 발생: %v", r)
-// 		}
-// 	}()
-
-// 	// 백업 디렉토리 생성
-// 	if err := os.MkdirAll(m.backupDir, os.ModePerm); err != nil {
-// 		return fmt.Errorf("백업 디렉토리 생성 실패: %w", err)
-// 	}
-
-// 	// 현재 디렉토리 파일 목록 조회
-// 	files, err := os.ReadDir(m.currentDir)
-// 	if err != nil {
-// 		return fmt.Errorf("디렉토리 읽기 실패: %w", err)
-// 	}
-
-// 	// 각 파일/디렉토리 백업
-// 	for _, file := range files {
-// 		oldPath := filepath.Join(m.currentDir, file.Name())
-// 		newPath := filepath.Join(m.backupDir, file.Name())
-
-// 		if file.IsDir() {
-// 			if err := m.backupDirectory(oldPath, newPath); err != nil {
-// 				return fmt.Errorf("디렉토리 백업 실패 (%s): %w", file.Name(), err)
-// 			}
-// 		} else {
-// 			if err := m.backupFile(oldPath, newPath); err != nil {
-// 				return fmt.Errorf("파일 백업 실패 (%s): %w", file.Name(), err)
-// 			}
-// 		}
-// 	}
-
-// 	m.logger.Info("백업 완료: %s", m.backupDir)
-// 	return nil
-// }
-
-// // Restore는 백업된 파일들을 복원합니다
-// func (m *Manager) Restore() error {
-// 	m.logger.Info("파일 복원 시작")
-
-// 	// 백업 디렉토리 존재 확인
-// 	if _, err := os.Stat(m.backupDir); os.IsNotExist(err) {
-// 		m.logger.Error("백업 디렉토리가 존재하지 않음: %s", m.backupDir)
-// 		return fmt.Errorf("백업 디렉토리가 존재하지 않습니다: %s", m.backupDir)
-// 	}
-
-// 	// 현재 디렉토리 정리
-// 	if err := m.cleanCurrentDirectory(); err != nil {
-// 		m.logger.Error("현재 디렉토리 정리 실패: %v", err)
-// 		return fmt.Errorf("현재 디렉토리 정리 실패: %w", err)
-// 	}
-
-// 	// 백업 파일 복원
-// 	files, err := os.ReadDir(m.backupDir)
-// 	if err != nil {
-// 		m.logger.Error("백업 디렉토리 읽기 실패: %v", err)
-// 		return fmt.Errorf("백업 디렉토리 읽기 실패: %w", err)
-// 	}
-
-// 	for _, file := range files {
-// 		srcPath := filepath.Join(m.backupDir, file.Name())
-// 		destPath := filepath.Join(m.currentDir, file.Name())
-
-// 		if file.IsDir() {
-// 			m.logger.Info("폴더 복원 시도: %s -> %s", srcPath, destPath)
-// 			if err := m.restoreDirectory(srcPath, destPath); err != nil {
-// 				m.logger.Error("폴더 복원 실패: %s, 에러: %v", srcPath, err)
-// 				return fmt.Errorf("디렉토리 복원 실패 (%s): %w", file.Name(), err)
-// 			}
-// 		} else {
-// 			m.logger.Info("파일 복원 시도: %s -> %s", srcPath, destPath)
-// 			if err := m.restoreFile(srcPath, destPath); err != nil {
-// 				m.logger.Error("파일 복원 실패: %s, 에러: %v", srcPath, err)
-// 				return fmt.Errorf("파일 복원 실패 (%s): %w", file.Name(), err)
-// 			}
-// 		}
-// 	}
-
-// 	m.logger.Info("파일 복원 완료")
-// 	return nil
-// }
-
-// // ExtractZip은 ZIP 파일을 지정된 디렉토리에 압축 해제합니다
-// func (m *Manager) ExtractZip(zipFile string) error {
-// 	defer func() {
-// 		if r := recover(); r != nil {
-// 			m.logger.Error("ExtractZip 함수에서 패닉 발생: %v", r)
-// 		}
-// 	}()
-
-// 	reader, err := zip.OpenReader(zipFile)
-// 	if err != nil {
-// 		return fmt.Errorf("ZIP 파일 열기 실패: %w", err)
-// 	}
-// 	defer reader.Close()
-
-// 	for _, file := range reader.File {
-// 		if err := m.extractFile(file); err != nil {
-// 			return fmt.Errorf("파일 압축해제 실패 (%s): %w", file.Name, err)
-// 		}
-// 	}
-
-// 	return nil
-// }
-
-// // DeleteFile은 지정된 파일을 삭제합니다
-// func (m *Manager) DeleteFile(path string) error {
-// 	if err := os.Remove(path); err != nil {
-// 		return fmt.Errorf("파일 삭제 실패: %w", err)
-// 	}
-// 	return nil
-// }
-
-// func (m *Manager) GetBackupDir() string {
-// 	return m.backupDir
-// }
-
-// // 내부 헬퍼 함수들
-// // 파일 백업 함수
-// func (m *Manager) backupFile(src, dest string) error {
-// 	// 먼저 Rename 시도
-// 	if err := os.Rename(src, dest); err == nil {
-// 		return nil
-// 	}
-
-// 	// Rename 실패시 복사 후 삭제 시도
-// 	sourceFile, err := os.Open(src)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer sourceFile.Close()
-
-// 	destFile, err := os.Create(dest)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer destFile.Close()
-
-// 	if _, err := io.Copy(destFile, sourceFile); err != nil {
-// 		return err
-// 	}
-
-// 	// 여러 번 삭제 시도
-// 	for i := 0; i < 3; i++ {
-// 		if err := os.Remove(src); err == nil {
-// 			return nil
-// 		}
-// 		time.Sleep(time.Second)
-// 	}
-
-// 	return os.Remove(src)
-// }
-
-// // 디렉토리 백업 함수
-// func (m *Manager) backupDirectory(src, dest string) error {
-// 	if err := os.MkdirAll(dest, os.ModePerm); err != nil {
-// 		return err
-// 	}
-
-// 	entries, err := os.ReadDir(src)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	for _, entry := range entries {
-// 		srcPath := filepath.Join(src, entry.Name())
-// 		destPath := filepath.Join(dest, entry.Name())
-
-// 		if entry.IsDir() {
-// 			if err := m.backupDirectory(srcPath, destPath); err != nil {
-// 				return err
-// 			}
-// 		} else {
-// 			if err := m.backupFile(srcPath, destPath); err != nil {
-// 				return err
-// 			}
-// 		}
-// 	}
-
-// 	return os.RemoveAll(src)
-// }
-
-// // 파일 복구 함수
-// func (m *Manager) restoreFile(src, dest string) error {
-// 	// 기존 파일이 존재하면 삭제 시도
-// 	if _, err := os.Stat(dest); err == nil {
-// 		if err := os.Remove(dest); err != nil {
-// 			m.logger.Info("기존 파일 삭제 시도: %s", dest)
-// 			if err := os.Remove(dest); err != nil {
-// 				return fmt.Errorf("기존 파일 삭제 실패: %v", err)
-// 			}
-// 		}
-// 	}
-
-// 	// Rename 시도
-// 	if err := os.Rename(src, dest); err == nil {
-// 		m.logger.Info("파일 정상적으로 Rename으로 복원됨: %s -> %s", src, dest)
-// 		return nil
-// 	} else {
-// 		// Rename 실패 로그 추가
-// 		m.logger.Error("파일 Rename 실패, 복사 방식으로 복원 시도: %s -> %s, 에러: %v", src, dest, err)
-// 	}
-
-// 	// Rename 실패 시 기존 방식으로 복원 진행
-// 	sourceFile, err := os.Open(src)
-// 	if err != nil {
-// 		return fmt.Errorf("파일 열기 실패: %v", err)
-// 	}
-// 	defer sourceFile.Close()
-
-// 	destFile, err := os.Create(dest)
-// 	if err != nil {
-// 		return fmt.Errorf("파일 생성 실패: %v", err)
-// 	}
-// 	defer destFile.Close()
-
-// 	if _, err := io.Copy(destFile, sourceFile); err != nil {
-// 		return fmt.Errorf("파일 복사 실패: %v", err)
-// 	}
-
-// 	m.logger.Info("파일 복사 방식으로 복원됨: %s -> %s", src, dest)
-
-// 	return os.Remove(src)
-// }
-
-// // 디렉토리 복구 함수
-// func (m *Manager) restoreDirectory(src, dest string) error {
-// 	m.logger.Info("디렉토리 복원 시도: %s -> %s", src, dest)
-
-// 	if err := os.MkdirAll(dest, os.ModePerm); err != nil {
-// 		m.logger.Error("디렉토리 생성 실패: %s, 에러: %v", dest, err)
-// 		return err
-// 	}
-
-// 	entries, err := os.ReadDir(src)
-// 	if err != nil {
-// 		m.logger.Error("디렉토리 읽기 실패: %s, 에러: %v", src, err)
-// 		return err
-// 	}
-
-// 	for _, entry := range entries {
-// 		srcPath := filepath.Join(src, entry.Name())
-// 		destPath := filepath.Join(dest, entry.Name())
-
-// 		if entry.IsDir() {
-// 			m.logger.Info("하위 디렉토리 복원 시도: %s -> %s", srcPath, destPath)
-// 			if err := m.restoreDirectory(srcPath, destPath); err != nil {
-// 				m.logger.Error("하위 디렉토리 복원 실패: %s, 에러: %v", srcPath, err)
-// 				return err
-// 			}
-// 		} else {
-// 			m.logger.Info("파일 복원 시도: %s -> %s", srcPath, destPath)
-// 			if err := m.restoreFile(srcPath, destPath); err != nil {
-// 				m.logger.Error("파일 복원 실패: %s, 에러: %v", srcPath, err)
-// 				return err
-// 			}
-// 		}
-// 	}
-
-// 	m.logger.Info("디렉토리 복원 완료: %s", dest)
-// 	return os.RemoveAll(src)
-// }
-
-// // 현재 디렉토리 정리 함수
-// func (m *Manager) cleanCurrentDirectory() error {
-// 	files, err := os.ReadDir(m.currentDir)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	for _, file := range files {
-// 		path := filepath.Join(m.currentDir, file.Name())
-// 		for i := 0; i < 3; i++ {
-// 			var err error
-// 			if file.IsDir() {
-// 				m.logger.Error("폴더 삭제 시도: %s", path)
-// 				err = os.RemoveAll(path)
-// 			} else {
-// 				m.logger.Error("파일 삭제 시도: %s", path)
-// 				err = os.Remove(path)
-// 			}
-
-// 			if err == nil {
-// 				m.logger.Info("삭제 성공: %s", path)
-// 				break
-// 			}
-
-// 			// 마지막 시도에는 old 붙이고 삭제 시도도
-// 			if i == 2 {
-// 				newPath := path + ".old"
-// 				m.logger.Error("파일/폴더 삭제 실패, 이름 변경 후 삭제 시도: %s -> %s", path, newPath)
-// 				if os.Rename(path, newPath) == nil {
-// 					m.logger.Error(".old 파일 삭제 시도: %s", newPath)
-// 					os.Remove(newPath)
-// 				}
-// 			}
-
-// 			time.Sleep(time.Second)
-// 		}
-// 	}
-// 	return nil
-// }
-
-// // 파일 압축 해제 함수
-// func (m *Manager) extractFile(file *zip.File) error {
-// 	filePath := filepath.Join(m.currentDir, file.Name)
-
-// 	if file.FileInfo().IsDir() {
-// 		return os.MkdirAll(filePath, os.ModePerm)
-// 	}
-
-// 	if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
-// 		return err
-// 	}
-
-// 	dest, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, file.Mode())
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer dest.Close()
-
-// 	src, err := file.Open()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer src.Close()
-
-// 	_, err = io.Copy(dest, src)
-// 	return err
-// }
-
-// // Logger는 로깅을 위한 인터페이스입니다
-// type Logger interface {
-// 	Info(format string, v ...interface{})
-// 	Error(format string, v ...interface{})
-// }
 
 ```
 ## internal/hash/domain/entity/hash_info.go
@@ -3189,12 +2732,6 @@ type UpdateFile struct {
 	Filename string // 업데이트 파일명
 }
 
-// FileInfo는 다운로드된 파일의 정보를 담는 값 객체입니다
-type FileInfo struct {
-	ContentLength int64  // 파일 크기
-	ContentType   string // 파일 타입
-}
-
 ```
 ## internal/network/domain/repository/network_repository.go
 ```go
@@ -3216,7 +2753,7 @@ type NetworkRepository interface {
 
 	// DownloadFile은 서버로부터 파일을 다운로드합니다
 	// io.ReadCloser를 반환하여 스트림 처리가 가능하도록 합니다
-	DownloadFile(serverIP string, filename string) (io.ReadCloser, *entity.FileInfo, error)
+	DownloadFile(serverIP string, filename string) (io.ReadCloser, error)
 }
 
 ```
@@ -3302,12 +2839,12 @@ func (s *NetworkService) GetUpdateFileName(serverIP string) (string, error) {
 
 // DownloadFile은 업데이트 파일을 다운로드합니다
 func (s *NetworkService) DownloadFile(serverIP string, filename string) (io.ReadCloser, error) {
-	reader, fileInfo, err := s.repo.DownloadFile(serverIP, filename)
+	reader, err := s.repo.DownloadFile(serverIP, filename)
 	if err != nil {
 		return nil, fmt.Errorf("파일 다운로드 실패: %w", err)
 	}
 
-	s.logger.Info("다운로드 시작 - 파일: %s, 크기: %d bytes", filename, fileInfo.ContentLength)
+	s.logger.Info("다운로드 시작 - 파일: %s", filename)
 	return reader, nil
 }
 
@@ -3437,7 +2974,7 @@ func (r *HTTPRepository) LoadServerConfig(configPath, serverName string) (*entit
 		}, nil
 	}
 
-	return nil, fmt.Errorf("서버 프로필을 찾을 수 없음: server1")
+	return nil, fmt.Errorf("서버 프로필을 찾을 수 없음: %s", serverName)
 }
 
 // FetchUpdateFileName은 서버로부터 업데이트 파일명을 조회합니다
@@ -3466,24 +3003,19 @@ func (r *HTTPRepository) FetchUpdateFileName(serverIP string) (*entity.UpdateFil
 }
 
 // DownloadFile은 서버로부터 파일을 다운로드합니다
-func (r *HTTPRepository) DownloadFile(serverIP string, filename string) (io.ReadCloser, *entity.FileInfo, error) {
+func (r *HTTPRepository) DownloadFile(serverIP string, filename string) (io.ReadCloser, error) {
 	url := fmt.Sprintf("%s/update/file", serverIP)
 	resp, err := r.client.Get(url)
 	if err != nil {
-		return nil, nil, fmt.Errorf("파일 다운로드 요청 실패: %w", err)
+		return nil, fmt.Errorf("파일 다운로드 요청 실패: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, nil, fmt.Errorf("파일 다운로드 응답 오류: %d", resp.StatusCode)
+		return nil, fmt.Errorf("파일 다운로드 응답 오류: %d", resp.StatusCode)
 	}
 
-	fileInfo := &entity.FileInfo{
-		ContentLength: resp.ContentLength,
-		ContentType:   resp.Header.Get("Content-Type"),
-	}
-
-	return resp.Body, fileInfo, nil
+	return resp.Body, nil
 }
 
 ```

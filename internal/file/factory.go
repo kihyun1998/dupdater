@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kihyun1998/dupdater/internal/file/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/file/domain/repository"
 	"github.com/kihyun1998/dupdater/internal/file/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/file/infrastructure"
@@ -48,11 +49,12 @@ func New(config Config) (Manager, error) {
 		config.CurrentDir = dir
 	}
 
+	dirInfo := entity.NewDirInfo(config.BackupDir, config.CurrentDir)
+
 	// Repository 설정
 	repoConfig := &repository.Config{
-		BackupDir:  config.BackupDir,
-		CurrentDir: config.CurrentDir,
-		Logger:     config.Logger,
+		DirInfo: dirInfo,
+		Logger:  config.Logger,
 	}
 
 	// Repository 생성

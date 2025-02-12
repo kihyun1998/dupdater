@@ -28,13 +28,13 @@ func NewLocalFileRepository(config *repository.Config) repository.FileRepository
 
 // cleanCurrentDirectory는 현재 디렉토리를 정리합니다
 func (r *LocalFileRepository) cleanCurrentDirectory() error {
-	files, err := os.ReadDir(r.config.CurrentDir)
+	files, err := os.ReadDir(r.config.DirInfo.CurrentDir)
 	if err != nil {
 		return fmt.Errorf("디렉토리 읽기 실패: %w", err)
 	}
 
 	for _, file := range files {
-		path := filepath.Join(r.config.CurrentDir, file.Name())
+		path := filepath.Join(r.config.DirInfo.CurrentDir, file.Name())
 
 		// 여러 번 삭제 시도
 		for i := 0; i < 3; i++ {
@@ -94,7 +94,7 @@ func (r *LocalFileRepository) ExtractZip(zipFile string) error {
 
 // extractFile은 ZIP 파일의 항목을 압축 해제합니다
 func (r *LocalFileRepository) extractFile(file *zip.File) error {
-	filePath := filepath.Join(r.config.CurrentDir, file.Name)
+	filePath := filepath.Join(r.config.DirInfo.CurrentDir, file.Name)
 
 	if file.FileInfo().IsDir() {
 		return os.MkdirAll(filePath, os.ModePerm)
@@ -132,8 +132,8 @@ func (r *LocalFileRepository) Restore() error {
 	defer r.mu.Unlock()
 
 	// 백업 디렉토리 존재 확인
-	if _, err := os.Stat(r.config.BackupDir); os.IsNotExist(err) {
-		return fmt.Errorf("백업 디렉토리가 존재하지 않습니다: %s", r.config.BackupDir)
+	if _, err := os.Stat(r.config.DirInfo.BackupDir); os.IsNotExist(err) {
+		return fmt.Errorf("백업 디렉토리가 존재하지 않습니다: %s", r.config.DirInfo.BackupDir)
 	}
 
 	// 현재 디렉토리 정리
@@ -142,14 +142,14 @@ func (r *LocalFileRepository) Restore() error {
 	}
 
 	// 백업 파일 복원
-	files, err := os.ReadDir(r.config.BackupDir)
+	files, err := os.ReadDir(r.config.DirInfo.BackupDir)
 	if err != nil {
 		return fmt.Errorf("백업 디렉토리 읽기 실패: %w", err)
 	}
 
 	for _, file := range files {
-		srcPath := filepath.Join(r.config.BackupDir, file.Name())
-		destPath := filepath.Join(r.config.CurrentDir, file.Name())
+		srcPath := filepath.Join(r.config.DirInfo.BackupDir, file.Name())
+		destPath := filepath.Join(r.config.DirInfo.CurrentDir, file.Name())
 
 		if file.IsDir() {
 			if err := r.restoreDirectory(srcPath, destPath); err != nil {
@@ -243,20 +243,20 @@ func (r *LocalFileRepository) Backup() error {
 	defer r.mu.Unlock()
 
 	// 백업 디렉토리 생성
-	if err := os.MkdirAll(r.config.BackupDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(r.config.DirInfo.BackupDir, os.ModePerm); err != nil {
 		return fmt.Errorf("백업 디렉토리 생성 실패: %w", err)
 	}
 
 	// 현재 디렉토리 파일 목록 조회
-	files, err := os.ReadDir(r.config.CurrentDir)
+	files, err := os.ReadDir(r.config.DirInfo.CurrentDir)
 	if err != nil {
 		return fmt.Errorf("디렉토리 읽기 실패: %w", err)
 	}
 
 	// 각 파일 백업
 	for _, file := range files {
-		oldPath := filepath.Join(r.config.CurrentDir, file.Name())
-		newPath := filepath.Join(r.config.BackupDir, file.Name())
+		oldPath := filepath.Join(r.config.DirInfo.CurrentDir, file.Name())
+		newPath := filepath.Join(r.config.DirInfo.BackupDir, file.Name())
 
 		if file.IsDir() {
 			if err := r.backupDirectory(oldPath, newPath); err != nil {
@@ -274,7 +274,7 @@ func (r *LocalFileRepository) Backup() error {
 
 // GetBackupDir은 백업 디렉토리 경로를 반환합니다
 func (r *LocalFileRepository) GetBackupDir() string {
-	return r.config.BackupDir
+	return r.config.DirInfo.BackupDir
 }
 
 // backupDirectory는 디렉토리를 백업합니다
