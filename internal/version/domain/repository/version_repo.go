@@ -13,12 +13,6 @@ type VersionRepository interface {
 	// GetToVersion은 대상 버전 정보를 조회합니다
 	GetToVersion() *entity.Version
 
-	// SaveFromVersion은 현재 버전 정보를 저장합니다
-	SaveFromVersion(version *entity.Version) error
-
-	// SaveToVersion은 대상 버전 정보를 저장합니다
-	SaveToVersion(version *entity.Version) error
-
 	// ValidateVersions는 버전 정보의 유효성을 검증합니다
 	ValidateVersions() error
 }

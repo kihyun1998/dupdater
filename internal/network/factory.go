@@ -3,6 +3,7 @@ package network
 import (
 	"net/http"
 
+	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/network/infrastructure/repository"
 )
@@ -16,13 +17,7 @@ type Manager interface {
 
 // Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
 type Config struct {
-	Logger Logger
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
+	Logger logger.Logger
 }
 
 // networkManager는 Manager 인터페이스를 구현하는 구조체입니다

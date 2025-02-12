@@ -49,16 +49,3 @@ func (s *VersionService) ValidateVersions() error {
 	}
 	return nil
 }
-
-// IsUpdateRequired는 업데이트가 필요한지 확인합니다
-func (s *VersionService) IsUpdateRequired() bool {
-	fromVersion := s.repo.GetFromVersion()
-	toVersion := s.repo.GetToVersion()
-
-	if fromVersion == nil || toVersion == nil {
-		s.logger.Error("버전 정보가 없어 업데이트 필요 여부를 확인할 수 없습니다")
-		return false
-	}
-
-	return toVersion.IsNewer(fromVersion)
-}

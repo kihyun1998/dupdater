@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/network/domain/repository"
 )
@@ -15,17 +16,11 @@ import (
 // HTTPRepository는 HTTP 기반의 네트워크 작업을 구현합니다
 type HTTPRepository struct {
 	client *http.Client
-	logger Logger
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
+	logger logger.Logger
 }
 
 // NewHTTPRepository는 새로운 HTTPRepository 인스턴스를 생성합니다
-func NewHTTPRepository(logger Logger) repository.NetworkRepository {
+func NewHTTPRepository(logger logger.Logger) repository.NetworkRepository {
 	return &HTTPRepository{
 		client: &http.Client{},
 		logger: logger,

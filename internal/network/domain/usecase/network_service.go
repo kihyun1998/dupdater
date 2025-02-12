@@ -7,23 +7,18 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network/domain/repository"
 )
 
 // NetworkService는 네트워크 작업의 비즈니스 로직을 구현합니다
 type NetworkService struct {
 	repo   repository.NetworkRepository
-	logger Logger
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
+	logger logger.Logger
 }
 
 // NewNetworkService는 새로운 NetworkService 인스턴스를 생성합니다
-func NewNetworkService(repo repository.NetworkRepository, logger Logger) *NetworkService {
+func NewNetworkService(repo repository.NetworkRepository, logger logger.Logger) *NetworkService {
 	return &NetworkService{
 		repo:   repo,
 		logger: logger,

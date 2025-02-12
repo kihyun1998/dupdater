@@ -50,34 +50,6 @@ func (s *VersionStore) GetToVersion() *entity.Version {
 	return s.toVersion
 }
 
-// SaveFromVersion은 현재 버전을 저장합니다
-func (s *VersionStore) SaveFromVersion(version *entity.Version) error {
-	if err := version.Validate(); err != nil {
-		return fmt.Errorf("현재 버전 검증 실패: %w", err)
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.fromVersion = version
-	s.logger.Info("현재 버전이 업데이트됨: %s", version.String())
-	return nil
-}
-
-// SaveToVersion은 대상 버전을 저장합니다
-func (s *VersionStore) SaveToVersion(version *entity.Version) error {
-	if err := version.Validate(); err != nil {
-		return fmt.Errorf("대상 버전 검증 실패: %w", err)
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.toVersion = version
-	s.logger.Info("대상 버전이 업데이트됨: %s", version.String())
-	return nil
-}
-
 // ValidateVersions는 버전 정보의 유효성을 검증합니다
 func (s *VersionStore) ValidateVersions() error {
 	s.mu.RLock()
