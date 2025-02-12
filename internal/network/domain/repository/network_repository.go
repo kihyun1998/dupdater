@@ -16,5 +16,5 @@ type NetworkRepository interface {
 
 	// DownloadFile은 서버로부터 파일을 다운로드합니다
 	// io.ReadCloser를 반환하여 스트림 처리가 가능하도록 합니다
-	DownloadFile(serverIP string, filename string) (io.ReadCloser, *entity.FileInfo, error)
+	DownloadFile(serverIP string, filename string) (io.ReadCloser, error)
 }

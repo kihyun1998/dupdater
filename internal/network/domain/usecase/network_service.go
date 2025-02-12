@@ -78,11 +78,11 @@ func (s *NetworkService) GetUpdateFileName(serverIP string) (string, error) {
 
 // DownloadFile은 업데이트 파일을 다운로드합니다
 func (s *NetworkService) DownloadFile(serverIP string, filename string) (io.ReadCloser, error) {
-	reader, fileInfo, err := s.repo.DownloadFile(serverIP, filename)
+	reader, err := s.repo.DownloadFile(serverIP, filename)
 	if err != nil {
 		return nil, fmt.Errorf("파일 다운로드 실패: %w", err)
 	}
 
-	s.logger.Info("다운로드 시작 - 파일: %s, 크기: %d bytes", filename, fileInfo.ContentLength)
+	s.logger.Info("다운로드 시작 - 파일: %s", filename)
 	return reader, nil
 }

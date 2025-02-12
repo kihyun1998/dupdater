@@ -83,22 +83,17 @@ func (r *HTTPRepository) FetchUpdateFileName(serverIP string) (*entity.UpdateFil
 }
 
 // DownloadFile은 서버로부터 파일을 다운로드합니다
-func (r *HTTPRepository) DownloadFile(serverIP string, filename string) (io.ReadCloser, *entity.FileInfo, error) {
+func (r *HTTPRepository) DownloadFile(serverIP string, filename string) (io.ReadCloser, error) {
 	url := fmt.Sprintf("%s/update/file", serverIP)
 	resp, err := r.client.Get(url)
 	if err != nil {
-		return nil, nil, fmt.Errorf("파일 다운로드 요청 실패: %w", err)
+		return nil, fmt.Errorf("파일 다운로드 요청 실패: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, nil, fmt.Errorf("파일 다운로드 응답 오류: %d", resp.StatusCode)
+		return nil, fmt.Errorf("파일 다운로드 응답 오류: %d", resp.StatusCode)
 	}
 
-	fileInfo := &entity.FileInfo{
-		ContentLength: resp.ContentLength,
-		ContentType:   resp.Header.Get("Content-Type"),
-	}
-
-	return resp.Body, fileInfo, nil
+	return resp.Body, nil
 }
