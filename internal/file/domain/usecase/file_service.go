@@ -5,16 +5,17 @@ import (
 	"fmt"
 
 	"github.com/kihyun1998/dupdater/internal/file/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/logger"
 )
 
 // FileService는 파일 관리의 비즈니스 로직을 구현합니다
 type FileService struct {
 	repo   repository.FileRepository
-	logger repository.Logger
+	logger logger.Logger
 }
 
 // NewFileService는 새로운 FileService 인스턴스를 생성합니다
-func NewFileService(repo repository.FileRepository, logger repository.Logger) *FileService {
+func NewFileService(repo repository.FileRepository, logger logger.Logger) *FileService {
 	return &FileService{
 		repo:   repo,
 		logger: logger,

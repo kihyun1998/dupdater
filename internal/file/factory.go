@@ -9,6 +9,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/file/domain/repository"
 	"github.com/kihyun1998/dupdater/internal/file/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/file/infrastructure"
+	"github.com/kihyun1998/dupdater/internal/logger"
 )
 
 // Manager는 파일 관리를 위한 인터페이스입니다
@@ -22,15 +23,9 @@ type Manager interface {
 
 // Config는 Manager 생성에 필요한 설정입니다
 type Config struct {
-	Logger     Logger
+	Logger     logger.Logger
 	BackupDir  string
 	CurrentDir string
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
 }
 
 // manager는 Manager 인터페이스의 구현체입니다
