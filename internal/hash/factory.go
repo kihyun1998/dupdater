@@ -5,18 +5,13 @@ import (
 	"github.com/kihyun1998/dupdater/internal/hash/domain/repository"
 	"github.com/kihyun1998/dupdater/internal/hash/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/hash/infrastructure"
+	"github.com/kihyun1998/dupdater/internal/logger"
 )
 
 // Config는 해시 매니저 생성에 필요한 설정입니다
 type Config struct {
-	Logger     Logger
+	Logger     logger.Logger
 	CurrentDir string
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
 }
 
 // Manager는 해시 검증을 위한 인터페이스입니다

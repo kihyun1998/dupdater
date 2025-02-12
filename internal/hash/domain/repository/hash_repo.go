@@ -1,6 +1,9 @@
 package repository
 
-import "github.com/kihyun1998/dupdater/internal/hash/domain/entity"
+import (
+	"github.com/kihyun1998/dupdater/internal/hash/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/logger"
+)
 
 // HashRepository는 해시 검증을 위한 저장소 인터페이스입니다
 type HashRepository interface {
@@ -23,11 +26,5 @@ type Config struct {
 	CurrentDir string
 
 	// Logger는 로깅을 위한 인터페이스입니다
-	Logger Logger
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
+	Logger logger.Logger
 }

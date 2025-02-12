@@ -5,16 +5,17 @@ import (
 	"fmt"
 
 	"github.com/kihyun1998/dupdater/internal/hash/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/logger"
 )
 
 // HashService는 해시 검증 관련 비즈니스 로직을 구현합니다
 type HashService struct {
 	repo   repository.HashRepository
-	logger repository.Logger
+	logger logger.Logger
 }
 
 // NewHashService는 새로운 HashService 인스턴스를 생성합니다
-func NewHashService(repo repository.HashRepository, logger repository.Logger) *HashService {
+func NewHashService(repo repository.HashRepository, logger logger.Logger) *HashService {
 	return &HashService{
 		repo:   repo,
 		logger: logger,

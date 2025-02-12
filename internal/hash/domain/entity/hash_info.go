@@ -2,8 +2,6 @@
 package entity
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 )
 
@@ -35,38 +33,4 @@ func (f *FileHash) Validate() error {
 		return fmt.Errorf("파일 유형이 비어있습니다")
 	}
 	return nil
-}
-
-// HashResult는 해시 계산 결과를 담는 값 객체입니다
-type HashResult struct {
-	Hash []byte
-}
-
-// NewHashResult는 바이트 슬라이스로부터 새로운 HashResult를 생성합니다
-func NewHashResult(hash []byte) *HashResult {
-	return &HashResult{Hash: hash}
-}
-
-// CalculateHash는 데이터의 SHA-256 해시를 계산합니다
-func CalculateHash(data []byte) *HashResult {
-	hash := sha256.Sum256(data)
-	return &HashResult{Hash: hash[:]}
-}
-
-// ToBase64는 해시값을 base64 인코딩된 문자열로 변환합니다
-func (r *HashResult) ToBase64() string {
-	return base64.StdEncoding.EncodeToString(r.Hash)
-}
-
-// Compare는 두 해시값을 비교합니다
-func (r *HashResult) Compare(other *HashResult) bool {
-	if len(r.Hash) != len(other.Hash) {
-		return false
-	}
-	for i := range r.Hash {
-		if r.Hash[i] != other.Hash[i] {
-			return false
-		}
-	}
-	return true
 }
