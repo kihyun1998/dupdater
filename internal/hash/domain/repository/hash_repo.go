@@ -22,9 +22,7 @@ type HashRepository interface {
 
 // Config는 저장소 설정을 정의합니다
 type Config struct {
-	// CurrentDir은 현재 작업 디렉토리입니다
-	CurrentDir string
-
-	// Logger는 로깅을 위한 인터페이스입니다
-	Logger logger.Logger
+	CurrentDir  string
+	HashSumPath string
+	Logger      logger.Logger
 }

@@ -11,6 +11,8 @@ dupdater/
     │   └── updater.go
     ├── file/
     │   ├── domain/
+    │   │   ├── entity/
+    │   │   │   └── dir_info.go
     │   │   ├── repository/
     │   │   │   └── file_repository.go
     │   │   └── usecase/
@@ -729,12 +731,44 @@ type UIManager interface {
 }
 
 ```
+## internal/file/domain/entity/dir_info.go
+```go
+package entity
+
+// DirInfo는 디렉토리 정보를 담는 도메인 엔티티입니다
+type DirInfo struct {
+	BackupDir  string // 백업 디렉토리 경로
+	CurrentDir string // 현재 작업 디렉토리 경로
+}
+
+// NewDirInfo는 새로운 DirInfo 인스턴스를 생성합니다
+func NewDirInfo(backupDir, currentDir string) *DirInfo {
+	return &DirInfo{
+		BackupDir:  backupDir,
+		CurrentDir: currentDir,
+	}
+}
+
+// GetBackupDir은 백업 디렉토리 경로를 반환합니다
+func (d *DirInfo) GetBackupDir() string {
+	return d.BackupDir
+}
+
+// GetCurrentDir은 현재 작업 디렉토리 경로를 반환합니다
+func (d *DirInfo) GetCurrentDir() string {
+	return d.CurrentDir
+}
+
+```
 ## internal/file/domain/repository/file_repository.go
 ```go
 // Package repository는 파일 시스템 작업을 위한 인터페이스를 정의합니다
 package repository
 
-import "github.com/kihyun1998/dupdater/internal/logger"
+import (
+	"github.com/kihyun1998/dupdater/internal/file/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/logger"
+)
 
 // FileRepository는 파일 시스템 작업을 추상화하는 인터페이스입니다
 type FileRepository interface {
@@ -756,9 +790,8 @@ type FileRepository interface {
 
 // Config는 FileRepository 생성에 필요한 설정을 정의합니다
 type Config struct {
-	BackupDir  string        // 백업 디렉토리 경로
-	CurrentDir string        // 현재 작업 디렉토리
-	Logger     logger.Logger // 로거 인터페이스
+	DirInfo *entity.DirInfo
+	Logger  logger.Logger // 로거 인터페이스
 }
 
 ```
@@ -848,6 +881,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kihyun1998/dupdater/internal/file/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/file/domain/repository"
 	"github.com/kihyun1998/dupdater/internal/file/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/file/infrastructure"
@@ -890,11 +924,12 @@ func New(config Config) (Manager, error) {
 		config.CurrentDir = dir
 	}
 
+	dirInfo := entity.NewDirInfo(config.BackupDir, config.CurrentDir)
+
 	// Repository 설정
 	repoConfig := &repository.Config{
-		BackupDir:  config.BackupDir,
-		CurrentDir: config.CurrentDir,
-		Logger:     config.Logger,
+		DirInfo: dirInfo,
+		Logger:  config.Logger,
 	}
 
 	// Repository 생성
@@ -962,13 +997,13 @@ func NewLocalFileRepository(config *repository.Config) repository.FileRepository
 
 // cleanCurrentDirectory는 현재 디렉토리를 정리합니다
 func (r *LocalFileRepository) cleanCurrentDirectory() error {
-	files, err := os.ReadDir(r.config.CurrentDir)
+	files, err := os.ReadDir(r.config.DirInfo.CurrentDir)
 	if err != nil {
 		return fmt.Errorf("디렉토리 읽기 실패: %w", err)
 	}
 
 	for _, file := range files {
-		path := filepath.Join(r.config.CurrentDir, file.Name())
+		path := filepath.Join(r.config.DirInfo.CurrentDir, file.Name())
 
 		// 여러 번 삭제 시도
 		for i := 0; i < 3; i++ {
@@ -1028,7 +1063,7 @@ func (r *LocalFileRepository) ExtractZip(zipFile string) error {
 
 // extractFile은 ZIP 파일의 항목을 압축 해제합니다
 func (r *LocalFileRepository) extractFile(file *zip.File) error {
-	filePath := filepath.Join(r.config.CurrentDir, file.Name)
+	filePath := filepath.Join(r.config.DirInfo.CurrentDir, file.Name)
 
 	if file.FileInfo().IsDir() {
 		return os.MkdirAll(filePath, os.ModePerm)
@@ -1066,8 +1101,8 @@ func (r *LocalFileRepository) Restore() error {
 	defer r.mu.Unlock()
 
 	// 백업 디렉토리 존재 확인
-	if _, err := os.Stat(r.config.BackupDir); os.IsNotExist(err) {
-		return fmt.Errorf("백업 디렉토리가 존재하지 않습니다: %s", r.config.BackupDir)
+	if _, err := os.Stat(r.config.DirInfo.BackupDir); os.IsNotExist(err) {
+		return fmt.Errorf("백업 디렉토리가 존재하지 않습니다: %s", r.config.DirInfo.BackupDir)
 	}
 
 	// 현재 디렉토리 정리
@@ -1076,14 +1111,14 @@ func (r *LocalFileRepository) Restore() error {
 	}
 
 	// 백업 파일 복원
-	files, err := os.ReadDir(r.config.BackupDir)
+	files, err := os.ReadDir(r.config.DirInfo.BackupDir)
 	if err != nil {
 		return fmt.Errorf("백업 디렉토리 읽기 실패: %w", err)
 	}
 
 	for _, file := range files {
-		srcPath := filepath.Join(r.config.BackupDir, file.Name())
-		destPath := filepath.Join(r.config.CurrentDir, file.Name())
+		srcPath := filepath.Join(r.config.DirInfo.BackupDir, file.Name())
+		destPath := filepath.Join(r.config.DirInfo.CurrentDir, file.Name())
 
 		if file.IsDir() {
 			if err := r.restoreDirectory(srcPath, destPath); err != nil {
@@ -1177,20 +1212,20 @@ func (r *LocalFileRepository) Backup() error {
 	defer r.mu.Unlock()
 
 	// 백업 디렉토리 생성
-	if err := os.MkdirAll(r.config.BackupDir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(r.config.DirInfo.BackupDir, os.ModePerm); err != nil {
 		return fmt.Errorf("백업 디렉토리 생성 실패: %w", err)
 	}
 
 	// 현재 디렉토리 파일 목록 조회
-	files, err := os.ReadDir(r.config.CurrentDir)
+	files, err := os.ReadDir(r.config.DirInfo.CurrentDir)
 	if err != nil {
 		return fmt.Errorf("디렉토리 읽기 실패: %w", err)
 	}
 
 	// 각 파일 백업
 	for _, file := range files {
-		oldPath := filepath.Join(r.config.CurrentDir, file.Name())
-		newPath := filepath.Join(r.config.BackupDir, file.Name())
+		oldPath := filepath.Join(r.config.DirInfo.CurrentDir, file.Name())
+		newPath := filepath.Join(r.config.DirInfo.BackupDir, file.Name())
 
 		if file.IsDir() {
 			if err := r.backupDirectory(oldPath, newPath); err != nil {
@@ -1208,7 +1243,7 @@ func (r *LocalFileRepository) Backup() error {
 
 // GetBackupDir은 백업 디렉토리 경로를 반환합니다
 func (r *LocalFileRepository) GetBackupDir() string {
-	return r.config.BackupDir
+	return r.config.DirInfo.BackupDir
 }
 
 // backupDirectory는 디렉토리를 백업합니다
@@ -1284,8 +1319,6 @@ func (r *LocalFileRepository) backupFile(src, dest string) error {
 package entity
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 )
 
@@ -1319,46 +1352,15 @@ func (f *FileHash) Validate() error {
 	return nil
 }
 
-// HashResult는 해시 계산 결과를 담는 값 객체입니다
-type HashResult struct {
-	Hash []byte
-}
-
-// NewHashResult는 바이트 슬라이스로부터 새로운 HashResult를 생성합니다
-func NewHashResult(hash []byte) *HashResult {
-	return &HashResult{Hash: hash}
-}
-
-// CalculateHash는 데이터의 SHA-256 해시를 계산합니다
-func CalculateHash(data []byte) *HashResult {
-	hash := sha256.Sum256(data)
-	return &HashResult{Hash: hash[:]}
-}
-
-// ToBase64는 해시값을 base64 인코딩된 문자열로 변환합니다
-func (r *HashResult) ToBase64() string {
-	return base64.StdEncoding.EncodeToString(r.Hash)
-}
-
-// Compare는 두 해시값을 비교합니다
-func (r *HashResult) Compare(other *HashResult) bool {
-	if len(r.Hash) != len(other.Hash) {
-		return false
-	}
-	for i := range r.Hash {
-		if r.Hash[i] != other.Hash[i] {
-			return false
-		}
-	}
-	return true
-}
-
 ```
 ## internal/hash/domain/repository/hash_repo.go
 ```go
 package repository
 
-import "github.com/kihyun1998/dupdater/internal/hash/domain/entity"
+import (
+	"github.com/kihyun1998/dupdater/internal/hash/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/logger"
+)
 
 // HashRepository는 해시 검증을 위한 저장소 인터페이스입니다
 type HashRepository interface {
@@ -1381,13 +1383,7 @@ type Config struct {
 	CurrentDir string
 
 	// Logger는 로깅을 위한 인터페이스입니다
-	Logger Logger
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
+	Logger logger.Logger
 }
 
 ```
@@ -1400,16 +1396,17 @@ import (
 	"fmt"
 
 	"github.com/kihyun1998/dupdater/internal/hash/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/logger"
 )
 
 // HashService는 해시 검증 관련 비즈니스 로직을 구현합니다
 type HashService struct {
 	repo   repository.HashRepository
-	logger repository.Logger
+	logger logger.Logger
 }
 
 // NewHashService는 새로운 HashService 인스턴스를 생성합니다
-func NewHashService(repo repository.HashRepository, logger repository.Logger) *HashService {
+func NewHashService(repo repository.HashRepository, logger logger.Logger) *HashService {
 	return &HashService{
 		repo:   repo,
 		logger: logger,
@@ -1465,18 +1462,13 @@ import (
 	"github.com/kihyun1998/dupdater/internal/hash/domain/repository"
 	"github.com/kihyun1998/dupdater/internal/hash/domain/usecase"
 	"github.com/kihyun1998/dupdater/internal/hash/infrastructure"
+	"github.com/kihyun1998/dupdater/internal/logger"
 )
 
 // Config는 해시 매니저 생성에 필요한 설정입니다
 type Config struct {
-	Logger     Logger
+	Logger     logger.Logger
 	CurrentDir string
-}
-
-// Logger는 로깅을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})
-	Error(format string, v ...interface{})
 }
 
 // Manager는 해시 검증을 위한 인터페이스입니다

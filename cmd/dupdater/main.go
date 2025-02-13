@@ -21,6 +21,7 @@ import (
 const (
 	AppName       = "dupdater"
 	TargetAppName = "simple_update_test.exe"
+	HashSumTxt    = "hash_sum.txt"
 	TotalSteps    = 8 // 총 업데이트 단계 수
 )
 
@@ -126,8 +127,9 @@ func main() {
 
 	// 9. 해시 매니저 초기화
 	hashManager, err := hash.New(hash.Config{
-		Logger:     logger,
-		CurrentDir: getCurrentDir(),
+		Logger:      logger,
+		CurrentDir:  getCurrentDir(),
+		HashSumPath: filepath.Join(getCurrentDir(), HashSumTxt),
 	})
 	if err != nil {
 		logger.Error("Failed to initialize hash manager: %v", err)

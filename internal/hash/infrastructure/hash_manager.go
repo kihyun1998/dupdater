@@ -115,7 +115,7 @@ func (m *FileHashManager) VerifyHashSum() error {
 		}
 	}()
 
-	sumFilePath := filepath.Join(m.config.CurrentDir, "hash_sum.txt")
+	sumFilePath := m.config.HashSumPath
 	file, err := os.Open(sumFilePath)
 	if err != nil {
 		return fmt.Errorf("hash_sum.txt 파일 열기 실패: %w", err)

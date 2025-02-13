@@ -10,8 +10,9 @@ import (
 
 // Config는 해시 매니저 생성에 필요한 설정입니다
 type Config struct {
-	Logger     logger.Logger
-	CurrentDir string
+	CurrentDir  string
+	HashSumPath string
+	Logger      logger.Logger
 }
 
 // Manager는 해시 검증을 위한 인터페이스입니다
@@ -30,8 +31,9 @@ type manager struct {
 func New(config Config) (Manager, error) {
 	// 리포지토리 설정
 	repoConfig := &repository.Config{
-		CurrentDir: config.CurrentDir,
-		Logger:     config.Logger,
+		CurrentDir:  config.CurrentDir,
+		HashSumPath: config.HashSumPath,
+		Logger:      config.Logger,
 	}
 
 	// 해시 매니저 생성
