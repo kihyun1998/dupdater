@@ -14,8 +14,8 @@ import (
 	logEntity "github.com/kihyun1998/dupdater/internal/logger/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/internal/ui"
-	"github.com/kihyun1998/dupdater/internal/ui/theme"
 	"github.com/kihyun1998/dupdater/internal/version"
+	"github.com/kihyun1998/dupdater/pkg/utils/theme"
 )
 
 const (

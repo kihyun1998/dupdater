@@ -7,7 +7,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/ui/components"
-	"github.com/kihyun1998/dupdater/internal/ui/theme"
+	"github.com/kihyun1998/dupdater/pkg/utils/theme"
 )
 
 // State는 UI의 현재 상태를 나타내는 구조체입니다

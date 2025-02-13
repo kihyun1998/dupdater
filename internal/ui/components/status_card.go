@@ -10,7 +10,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/kihyun1998/dupdater/internal/i18n"
-	"github.com/kihyun1998/dupdater/internal/ui/theme"
+	"github.com/kihyun1998/dupdater/pkg/utils/theme"
 )
 
 // StatusCard는 현재 상태를 표시하는 컴포넌트입니다
