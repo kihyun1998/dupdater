@@ -4,13 +4,16 @@ package app
 import (
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"syscall"
 	"time"
 
+	"github.com/kihyun1998/dupdater/internal/file"
+	"github.com/kihyun1998/dupdater/internal/hash"
 	"github.com/kihyun1998/dupdater/internal/i18n"
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/pkg/utils"
 	"golang.org/x/sys/windows"
 )
@@ -30,12 +33,12 @@ type Updater struct {
 	restoreCompleted bool   // 복원 상태 추적을 위한 필드
 
 	// 의존성들
-	ui          UIManager      // UI 관리자
-	logger      Logger         // 로깅 시스템
-	network     NetworkManager // 네트워크 관리자
-	fileManager FileManager    // 파일 관리자
-	hashManager HashManager    // 해시 관리자
-	i18n        i18n.Manager   // 다국어 관리자
+	ui          UIManager       // UI 관리자
+	logger      logger.Logger   // 로깅 시스템
+	network     network.Manager // 네트워크 관리자
+	fileManager file.Manager    // 파일 관리자
+	hashManager hash.Manager    // 해시 관리자
+	i18n        i18n.Manager    // 다국어 관리자
 
 	// 상태 정보
 	serverIP   string // 조회된 서버 IP
@@ -50,10 +53,10 @@ type Config struct {
 	BackupCompleted  bool
 	RestoreCompleted bool
 	UIManager        UIManager
-	Logger           Logger
-	NetworkManager   NetworkManager
-	FileManager      FileManager
-	HashManager      HashManager
+	Logger           logger.Logger
+	NetworkManager   network.Manager
+	FileManager      file.Manager
+	HashManager      hash.Manager
 	I18n             i18n.Manager
 }
 
@@ -360,35 +363,6 @@ func (u *Updater) handleError(message string, err error) error {
 
 	u.ui.ShowError(fmt.Errorf("%s: %v", message, err))
 	return fmt.Errorf("%s: %v", message, err)
-}
-
-// Logger는 로깅 작업을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})  // 정보 로그를 기록합니다
-	Error(format string, v ...interface{}) // 에러 로그를 기록합니다
-}
-
-// NetworkManager 인터페이스
-type NetworkManager interface {
-	GetServerIP(serverName string) (string, error)
-	GetUpdateFileName(serverIP string) (string, error)
-	DownloadFile(serverIP, filename string) (*http.Response, error)
-}
-
-// FileManager 인터페이스
-type FileManager interface {
-	Backup() error
-	Restore() error
-	ExtractZip(zipFile string) error
-	DeleteFile(path string) error
-	GetBackupDir() string
-}
-
-// HashManager 인터페이스
-type HashManager interface {
-	VerifyFile(filePath string, expectedHash string) error
-	VerifyUpdateFile(filePath string) error
-	VerifyHashSum() error
 }
 
 // UIManager 인터페이스

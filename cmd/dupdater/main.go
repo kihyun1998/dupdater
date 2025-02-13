@@ -13,7 +13,6 @@ import (
 	"github.com/kihyun1998/dupdater/internal/logger"
 	logEntity "github.com/kihyun1998/dupdater/internal/logger/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/network"
-	"github.com/kihyun1998/dupdater/internal/scenario"
 	"github.com/kihyun1998/dupdater/internal/ui"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
 	"github.com/kihyun1998/dupdater/internal/version"
@@ -31,9 +30,9 @@ var (
 	toVersion   = flag.String("toVersion", "", "업데이트할 버전")
 	serverName  = flag.String("server", "server1", "서버 프로필 이름")
 	testMode    = flag.Bool("test", false, "테스트 모드 활성화")
-	testType    = flag.String("testType", "", "테스트 시나리오 유형 (success, error1, error2, ..., error8)")
-	themeMode   = flag.String("theme", "light", "테마 모드 (light/dark)")
-	langMode    = flag.String("lang", "ko", "언어 설정 (ko/en)")
+	// testType    = flag.String("testType", "", "테스트 시나리오 유형 (success, error1, error2, ..., error8)")
+	themeMode = flag.String("theme", "light", "테마 모드 (light/dark)")
+	langMode  = flag.String("lang", "ko", "언어 설정 (ko/en)")
 )
 
 func main() {
@@ -219,55 +218,55 @@ func runTestMode(i18nManager i18n.Manager) {
 	uiManager.Run()
 }
 
-func runScenarioTest(i18nManager i18n.Manager) {
-	// 로거 초기화
-	logPath := getLogPath()
-	logger, err := logger.New(logger.Config{
-		LogPath:    logPath,
-		LogLevel:   logEntity.INFO,
-		MaxSize:    10 * 1024 * 1024,
-		MaxBackups: 5,
-	})
-	if err != nil {
-		fmt.Printf("로거 초기화 실패: %v\n", err)
-		os.Exit(1)
-	}
-	defer logger.Close()
+// func runScenarioTest(i18nManager i18n.Manager) {
+// 	// 로거 초기화
+// 	logPath := getLogPath()
+// 	logger, err := logger.New(logger.Config{
+// 		LogPath:    logPath,
+// 		LogLevel:   logEntity.INFO,
+// 		MaxSize:    10 * 1024 * 1024,
+// 		MaxBackups: 5,
+// 	})
+// 	if err != nil {
+// 		fmt.Printf("로거 초기화 실패: %v\n", err)
+// 		os.Exit(1)
+// 	}
+// 	defer logger.Close()
 
-	// 테스트용 버전 매니저 초기화
-	testVersionManager, err := version.New(version.Config{
-		Logger:      logger,
-		FromVersion: "V3.0.0(2024-01-01)",
-		ToVersion:   "V3.0.1(2024-02-01)",
-	})
-	if err != nil {
-		fmt.Printf("버전 매니저 초기화 실패: %v\n", err)
-		os.Exit(1)
-	}
+// 	// 테스트용 버전 매니저 초기화
+// 	testVersionManager, err := version.New(version.Config{
+// 		Logger:      logger,
+// 		FromVersion: "V3.0.0(2024-01-01)",
+// 		ToVersion:   "V3.0.1(2024-02-01)",
+// 	})
+// 	if err != nil {
+// 		fmt.Printf("버전 매니저 초기화 실패: %v\n", err)
+// 		os.Exit(1)
+// 	}
 
-	// UI 매니저 생성 - 인터페이스로 받음
-	uiManager := ui.New(ui.Config{
-		AppName:     AppName,
-		TotalSteps:  TotalSteps,
-		Logger:      logger,
-		FromVersion: testVersionManager.GetFromVersion(),
-		ToVersion:   testVersionManager.GetToVersion(),
-		Theme:       theme.GetCurrentVariant(),
-		I18n:        i18nManager,
-	})
+// 	// UI 매니저 생성 - 인터페이스로 받음
+// 	uiManager := ui.New(ui.Config{
+// 		AppName:     AppName,
+// 		TotalSteps:  TotalSteps,
+// 		Logger:      logger,
+// 		FromVersion: testVersionManager.GetFromVersion(),
+// 		ToVersion:   testVersionManager.GetToVersion(),
+// 		Theme:       theme.GetCurrentVariant(),
+// 		I18n:        i18nManager,
+// 	})
 
-	// 시나리오 매니저 생성
-	scenarioManager, err := scenario.New(scenario.Config{
-		Logger:       logger,
-		UIManager:    uiManager,
-		I18n:         i18nManager,
-		ScenarioType: *testType,
-	})
-	if err != nil {
-		fmt.Printf("시나리오 매니저 생성 실패: %v\n", err)
-		os.Exit(1)
-	}
+// 	// 시나리오 매니저 생성
+// 	scenarioManager, err := scenario.New(scenario.Config{
+// 		Logger:       logger,
+// 		UIManager:    uiManager,
+// 		I18n:         i18nManager,
+// 		ScenarioType: *testType,
+// 	})
+// 	if err != nil {
+// 		fmt.Printf("시나리오 매니저 생성 실패: %v\n", err)
+// 		os.Exit(1)
+// 	}
 
-	// 시나리오 실행
-	scenarioManager.Run()
-}
+// 	// 시나리오 실행
+// 	scenarioManager.Run()
+// }
