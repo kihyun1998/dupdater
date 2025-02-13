@@ -71,6 +71,17 @@ dupdater/
     │   │   └── repository/
     │   │   │   └── http_repository.go
     │   └── factory.go
+    ├── scenario/
+    │   ├── entity/
+    │   │   ├── scenario.go
+    │   │   └── step.go
+    │   ├── scenarios/
+    │   │   ├── base.go
+    │   │   ├── error.go
+    │   │   └── success.go
+    │   ├── usecase/
+    │   │   └── scenario_service.go
+    │   └── factory.go
     ├── ui/
     │   ├── components/
     │   │   ├── resources.go
@@ -118,6 +129,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/logger"
 	logEntity "github.com/kihyun1998/dupdater/internal/logger/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/network"
+	"github.com/kihyun1998/dupdater/internal/scenario"
 	"github.com/kihyun1998/dupdater/internal/ui"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
 	"github.com/kihyun1998/dupdater/internal/version"
@@ -126,6 +138,7 @@ import (
 const (
 	AppName       = "dupdater"
 	TargetAppName = "simple_update_test.exe"
+	HashSumTxt    = "hash_sum.txt"
 	TotalSteps    = 8 // 총 업데이트 단계 수
 )
 
@@ -133,7 +146,8 @@ var (
 	fromVersion = flag.String("fromVersion", "", "현재 앱 버전")
 	toVersion   = flag.String("toVersion", "", "업데이트할 버전")
 	serverName  = flag.String("server", "server1", "서버 프로필 이름")
-	testMode    = flag.Bool("test", false, "UI 테스트 모드")
+	testMode    = flag.Bool("test", false, "테스트 모드 활성화")
+	testType    = flag.String("testType", "", "테스트 시나리오 유형 (success, error1, error2, ..., error8)")
 	themeMode   = flag.String("theme", "light", "테마 모드 (light/dark)")
 	langMode    = flag.String("lang", "ko", "언어 설정 (ko/en)")
 )
@@ -231,8 +245,9 @@ func main() {
 
 	// 9. 해시 매니저 초기화
 	hashManager, err := hash.New(hash.Config{
-		Logger:     logger,
-		CurrentDir: getCurrentDir(),
+		Logger:      logger,
+		CurrentDir:  getCurrentDir(),
+		HashSumPath: filepath.Join(getCurrentDir(), HashSumTxt),
 	})
 	if err != nil {
 		logger.Error("Failed to initialize hash manager: %v", err)
@@ -320,6 +335,59 @@ func runTestMode(i18nManager i18n.Manager) {
 	uiManager.Run()
 }
 
+func runScenarioTest(i18nManager i18n.Manager) {
+	// 로거 초기화
+	logPath := getLogPath()
+	logger, err := logger.New(logger.Config{
+		LogPath:    logPath,
+		LogLevel:   logEntity.INFO,
+		MaxSize:    10 * 1024 * 1024,
+		MaxBackups: 5,
+	})
+	if err != nil {
+		fmt.Printf("로거 초기화 실패: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Close()
+
+	// 테스트용 버전 매니저 초기화
+	testVersionManager, err := version.New(version.Config{
+		Logger:      logger,
+		FromVersion: "V3.0.0(2024-01-01)",
+		ToVersion:   "V3.0.1(2024-02-01)",
+	})
+	if err != nil {
+		fmt.Printf("버전 매니저 초기화 실패: %v\n", err)
+		os.Exit(1)
+	}
+
+	// UI 매니저 생성 - 인터페이스로 받음
+	uiManager := ui.New(ui.Config{
+		AppName:     AppName,
+		TotalSteps:  TotalSteps,
+		Logger:      logger,
+		FromVersion: testVersionManager.GetFromVersion(),
+		ToVersion:   testVersionManager.GetToVersion(),
+		Theme:       theme.GetCurrentVariant(),
+		I18n:        i18nManager,
+	})
+
+	// 시나리오 매니저 생성
+	scenarioManager, err := scenario.New(scenario.Config{
+		Logger:       logger,
+		UIManager:    uiManager,
+		I18n:         i18nManager,
+		ScenarioType: *testType,
+	})
+	if err != nil {
+		fmt.Printf("시나리오 매니저 생성 실패: %v\n", err)
+		os.Exit(1)
+	}
+
+	// 시나리오 실행
+	scenarioManager.Run()
+}
+
 ```
 ## internal/app/updater.go
 ```go
@@ -329,13 +397,17 @@ package app
 import (
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"syscall"
 	"time"
 
+	"github.com/kihyun1998/dupdater/internal/file"
+	"github.com/kihyun1998/dupdater/internal/hash"
 	"github.com/kihyun1998/dupdater/internal/i18n"
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/network"
+	"github.com/kihyun1998/dupdater/internal/ui"
 	"github.com/kihyun1998/dupdater/pkg/utils"
 	"golang.org/x/sys/windows"
 )
@@ -355,12 +427,12 @@ type Updater struct {
 	restoreCompleted bool   // 복원 상태 추적을 위한 필드
 
 	// 의존성들
-	ui          UIManager      // UI 관리자
-	logger      Logger         // 로깅 시스템
-	network     NetworkManager // 네트워크 관리자
-	fileManager FileManager    // 파일 관리자
-	hashManager HashManager    // 해시 관리자
-	i18n        i18n.Manager   // 다국어 관리자
+	ui          ui.Manager      // UI 관리자
+	logger      logger.Logger   // 로깅 시스템
+	network     network.Manager // 네트워크 관리자
+	fileManager file.Manager    // 파일 관리자
+	hashManager hash.Manager    // 해시 관리자
+	i18n        i18n.Manager    // 다국어 관리자
 
 	// 상태 정보
 	serverIP   string // 조회된 서버 IP
@@ -374,11 +446,11 @@ type Config struct {
 	ServerName       string
 	BackupCompleted  bool
 	RestoreCompleted bool
-	UIManager        UIManager
-	Logger           Logger
-	NetworkManager   NetworkManager
-	FileManager      FileManager
-	HashManager      HashManager
+	UIManager        ui.Manager
+	Logger           logger.Logger
+	NetworkManager   network.Manager
+	FileManager      file.Manager
+	HashManager      hash.Manager
 	I18n             i18n.Manager
 }
 
@@ -685,49 +757,6 @@ func (u *Updater) handleError(message string, err error) error {
 
 	u.ui.ShowError(fmt.Errorf("%s: %v", message, err))
 	return fmt.Errorf("%s: %v", message, err)
-}
-
-// Logger는 로깅 작업을 위한 인터페이스입니다
-type Logger interface {
-	Info(format string, v ...interface{})  // 정보 로그를 기록합니다
-	Error(format string, v ...interface{}) // 에러 로그를 기록합니다
-}
-
-// NetworkManager 인터페이스
-type NetworkManager interface {
-	GetServerIP(serverName string) (string, error)
-	GetUpdateFileName(serverIP string) (string, error)
-	DownloadFile(serverIP, filename string) (*http.Response, error)
-}
-
-// FileManager 인터페이스
-type FileManager interface {
-	Backup() error
-	Restore() error
-	ExtractZip(zipFile string) error
-	DeleteFile(path string) error
-	GetBackupDir() string
-}
-
-// HashManager 인터페이스
-type HashManager interface {
-	VerifyFile(filePath string, expectedHash string) error
-	VerifyUpdateFile(filePath string) error
-	VerifyHashSum() error
-}
-
-// UIManager 인터페이스
-type UIManager interface {
-	SetCurrentStep(step int)
-	UpdateDetail(message string)
-	ShowError(err error)
-	Run()
-	Close()
-	SetRestoreHandler(handler func())
-	ShowRestoring()
-	ShowRestoreComplete()
-	GetTotalSteps() int
-	SetCompletionCallback(func())
 }
 
 ```
@@ -1379,11 +1408,9 @@ type HashRepository interface {
 
 // Config는 저장소 설정을 정의합니다
 type Config struct {
-	// CurrentDir은 현재 작업 디렉토리입니다
-	CurrentDir string
-
-	// Logger는 로깅을 위한 인터페이스입니다
-	Logger logger.Logger
+	CurrentDir  string
+	HashSumPath string
+	Logger      logger.Logger
 }
 
 ```
@@ -1467,8 +1494,9 @@ import (
 
 // Config는 해시 매니저 생성에 필요한 설정입니다
 type Config struct {
-	Logger     logger.Logger
-	CurrentDir string
+	CurrentDir  string
+	HashSumPath string
+	Logger      logger.Logger
 }
 
 // Manager는 해시 검증을 위한 인터페이스입니다
@@ -1487,8 +1515,9 @@ type manager struct {
 func New(config Config) (Manager, error) {
 	// 리포지토리 설정
 	repoConfig := &repository.Config{
-		CurrentDir: config.CurrentDir,
-		Logger:     config.Logger,
+		CurrentDir:  config.CurrentDir,
+		HashSumPath: config.HashSumPath,
+		Logger:      config.Logger,
 	}
 
 	// 해시 매니저 생성
@@ -1635,7 +1664,7 @@ func (m *FileHashManager) VerifyHashSum() error {
 		}
 	}()
 
-	sumFilePath := filepath.Join(m.config.CurrentDir, "hash_sum.txt")
+	sumFilePath := m.config.HashSumPath
 	file, err := os.Open(sumFilePath)
 	if err != nil {
 		return fmt.Errorf("hash_sum.txt 파일 열기 실패: %w", err)
@@ -3008,6 +3037,405 @@ func (r *HTTPRepository) DownloadFile(serverIP string, filename string) (io.Read
 	}
 
 	return resp.Body, nil
+}
+
+```
+## internal/scenario/entity/scenario.go
+```go
+// internal/scenario/entity/scenario.go
+package entity
+
+import "fmt"
+
+// ScenarioType은 시나리오 유형을 정의합니다
+type ScenarioType string
+
+const (
+	ScenarioSuccess ScenarioType = "success"
+	ScenarioError1  ScenarioType = "error1"
+	ScenarioError2  ScenarioType = "error2"
+	ScenarioError3  ScenarioType = "error3"
+	ScenarioError4  ScenarioType = "error4"
+	ScenarioError5  ScenarioType = "error5"
+	ScenarioError6  ScenarioType = "error6"
+	ScenarioError7  ScenarioType = "error7"
+	ScenarioError8  ScenarioType = "error8"
+)
+
+// Scenario는 테스트 시나리오의 기본 정보를 정의합니다
+type Scenario struct {
+	Type        ScenarioType // 시나리오 유형
+	TargetStep  *Step        // 목표 단계 (에러 발생 단계)
+	Description string       // 시나리오 설명
+}
+
+// NewScenario는 새로운 시나리오를 생성합니다
+func NewScenario(scenarioType ScenarioType) *Scenario {
+	s := &Scenario{
+		Type: scenarioType,
+	}
+
+	// 시나리오 유형에 따른 설정
+	switch scenarioType {
+	case ScenarioSuccess:
+		s.Description = "정상 업데이트 시나리오"
+		s.TargetStep = nil
+	default:
+		// error1 ~ error8 처리
+		stepIndex := int(scenarioType[5] - '1') // "error1"에서 숫자 추출
+		if step := GetStep(stepIndex); step != nil {
+			s.TargetStep = step
+			s.Description = fmt.Sprintf("%s 단계 실패 시나리오", step.Name)
+		}
+	}
+
+	return s
+}
+
+// IsErrorScenario는 현재 시나리오가 에러 시나리오인지 확인합니다
+func (s *Scenario) IsErrorScenario() bool {
+	return s.Type != ScenarioSuccess
+}
+
+```
+## internal/scenario/entity/step.go
+```go
+package entity
+
+// Step은 업데이트 프로세스의 각 단계를 정의합니다
+type Step struct {
+	Index       int    // 단계 인덱스 (0-7)
+	Name        string // 단계 이름
+	MessageKey  string // i18n 메시지 키
+	NeedRestore bool   // 실패시 복원 필요 여부
+}
+
+// NewStep은 새로운 단계 정보를 생성합니다
+func NewStep(index int, name string, messageKey string, needRestore bool) *Step {
+	return &Step{
+		Index:       index,
+		Name:        name,
+		MessageKey:  messageKey,
+		NeedRestore: needRestore,
+	}
+}
+
+// Steps는 전체 업데이트 단계 정보를 제공합니다
+var Steps = []*Step{
+	NewStep(0, "AppCheck", "update.status.checking", false),
+	NewStep(1, "ServerInfo", "update.status.getting_info", false),
+	NewStep(2, "Backup", "update.status.preparing", true),
+	NewStep(3, "Download", "update.status.downloading", true),
+	NewStep(4, "Verify", "update.status.verifying", true),
+	NewStep(5, "Install", "update.status.installing", true),
+	NewStep(6, "FinalVerify", "update.status.finalizing", true),
+	NewStep(7, "Restart", "update.status.completed", true),
+}
+
+// GetStep은 인덱스에 해당하는 단계 정보를 반환합니다
+func GetStep(index int) *Step {
+	if index < 0 || index >= len(Steps) {
+		return nil
+	}
+	return Steps[index]
+}
+
+```
+## internal/scenario/factory.go
+```go
+// internal/scenario/factory.go
+package scenario
+
+import (
+	"fmt"
+
+	"github.com/kihyun1998/dupdater/internal/i18n"
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/scenario/entity"
+	"github.com/kihyun1998/dupdater/internal/scenario/usecase"
+	"github.com/kihyun1998/dupdater/internal/ui"
+)
+
+// Manager는 시나리오 실행을 위한 인터페이스입니다
+type Manager interface {
+	Run()
+}
+
+// Config는 시나리오 매니저 생성에 필요한 설정입니다
+type Config struct {
+	Logger       logger.Logger
+	UIManager    ui.Manager
+	I18n         i18n.Manager
+	ScenarioType string
+}
+
+// manager는 시나리오 매니저의 구현체입니다
+type manager struct {
+	service *usecase.ScenarioService
+}
+
+// New는 새로운 시나리오 매니저를 생성합니다
+func New(config Config) (Manager, error) {
+	// 시나리오 타입 검증 및 생성
+	scenarioType := entity.ScenarioType(config.ScenarioType)
+	scenario := entity.NewScenario(scenarioType)
+
+	if scenario == nil {
+		return nil, fmt.Errorf("잘못된 시나리오 타입: %s", config.ScenarioType)
+	}
+
+	// 시나리오 서비스 생성
+	service := usecase.NewScenarioService(
+		config.Logger,
+		config.UIManager,
+		scenario,
+	)
+
+	return &manager{
+		service: service,
+	}, nil
+}
+
+// Run은 시나리오를 실행합니다
+func (m *manager) Run() {
+	m.service.Run()
+}
+
+```
+## internal/scenario/scenarios/base.go
+```go
+package scenarios
+
+import (
+	"time"
+
+	"github.com/kihyun1998/dupdater/internal/scenario/entity"
+	"github.com/kihyun1998/dupdater/internal/ui"
+)
+
+// StepExecutor는 각 단계의 실행을 담당하는 인터페이스입니다
+type StepExecutor interface {
+	Execute(uiManager ui.Manager) error
+	GetStep() *entity.Step
+}
+
+// BaseScenario는 기본 시나리오 구현을 제공합니다
+type BaseScenario struct {
+	executors []StepExecutor
+}
+
+// Execute는 시나리오의 단계들을 순차적으로 실행합니다
+func (b *BaseScenario) Execute(uiManager ui.Manager) error {
+	for _, executor := range b.executors {
+		step := executor.GetStep()
+		uiManager.SetCurrentStep(step.Index)
+		time.Sleep(2 * time.Second) // 단계 실행 시뮬레이션
+
+		if err := executor.Execute(uiManager); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+```
+## internal/scenario/scenarios/error.go
+```go
+// internal/scenario/scenarios/error.go
+package scenarios
+
+import (
+	"fmt"
+
+	"github.com/kihyun1998/dupdater/internal/scenario/entity"
+	"github.com/kihyun1998/dupdater/internal/ui"
+)
+
+// ErrorStep은 에러 발생 단계를 구현합니다
+type ErrorStep struct {
+	step      *entity.Step
+	shouldErr bool
+}
+
+func NewErrorStep(step *entity.Step, shouldErr bool) *ErrorStep {
+	return &ErrorStep{
+		step:      step,
+		shouldErr: shouldErr,
+	}
+}
+
+func (s *ErrorStep) Execute(uiManager ui.Manager) error {
+	if s.shouldErr {
+		return fmt.Errorf("%s 단계에서 오류 발생", s.step.Name)
+	}
+	return nil
+}
+
+func (s *ErrorStep) GetStep() *entity.Step {
+	return s.step
+}
+
+// ErrorScenario는 에러 시나리오를 구현합니다
+type ErrorScenario struct {
+	BaseScenario
+	errorStep *entity.Step
+}
+
+// NewErrorScenario는 새로운 에러 시나리오를 생성합니다
+func NewErrorScenario(errorStep *entity.Step) *ErrorScenario {
+	scenario := &ErrorScenario{
+		errorStep: errorStep,
+	}
+
+	// 에러 발생 단계까지의 실행자 추가
+	for _, step := range entity.Steps {
+		shouldErr := step.Index == errorStep.Index
+		scenario.executors = append(scenario.executors, NewErrorStep(step, shouldErr))
+		if shouldErr {
+			break
+		}
+	}
+
+	return scenario
+}
+
+```
+## internal/scenario/scenarios/success.go
+```go
+package scenarios
+
+import (
+	"github.com/kihyun1998/dupdater/internal/scenario/entity"
+	"github.com/kihyun1998/dupdater/internal/ui"
+)
+
+// SuccessStep은 성공 시나리오의 단계를 구현합니다
+type SuccessStep struct {
+	step *entity.Step
+}
+
+func NewSuccessStep(step *entity.Step) *SuccessStep {
+	return &SuccessStep{step: step}
+}
+
+func (s *SuccessStep) Execute(uiManager ui.Manager) error {
+	return nil // 성공 시나리오는 항상 성공
+}
+
+func (s *SuccessStep) GetStep() *entity.Step {
+	return s.step
+}
+
+// SuccessScenario는 성공 시나리오를 구현합니다
+type SuccessScenario struct {
+	BaseScenario
+}
+
+// NewSuccessScenario는 새로운 성공 시나리오를 생성합니다
+func NewSuccessScenario() *SuccessScenario {
+	scenario := &SuccessScenario{}
+
+	// 모든 단계를 성공 단계로 추가
+	for _, step := range entity.Steps {
+		scenario.executors = append(scenario.executors, NewSuccessStep(step))
+	}
+
+	return scenario
+}
+
+```
+## internal/scenario/usecase/scenario_service.go
+```go
+package usecase
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/scenario/entity"
+	"github.com/kihyun1998/dupdater/internal/ui"
+)
+
+// ScenarioService는 시나리오 실행을 담당하는 서비스입니다
+type ScenarioService struct {
+	logger    logger.Logger
+	uiManager ui.Manager
+	scenario  *entity.Scenario
+}
+
+// NewScenarioService는 새로운 ScenarioService를 생성합니다
+func NewScenarioService(
+	logger logger.Logger,
+	uiManager ui.Manager,
+	scenario *entity.Scenario,
+) *ScenarioService {
+	return &ScenarioService{
+		logger:    logger,
+		uiManager: uiManager,
+		scenario:  scenario,
+	}
+}
+
+// Run은 시나리오를 실행합니다
+func (s *ScenarioService) Run() {
+	s.logger.Info("시나리오 시작: %s", s.scenario.Description)
+
+	// UI 복원 핸들러 설정
+	s.uiManager.SetRestoreHandler(func() {
+		s.handleRestore()
+	})
+
+	// 시나리오 실행
+	go func() {
+		if s.scenario.IsErrorScenario() {
+			s.runErrorScenario()
+		} else {
+			s.runSuccessScenario()
+		}
+	}()
+
+	// UI 실행
+	s.uiManager.Run()
+}
+
+// runSuccessScenario는 성공 시나리오를 실행합니다
+func (s *ScenarioService) runSuccessScenario() {
+	for i, _ := range entity.Steps {
+		s.uiManager.SetCurrentStep(i)
+		time.Sleep(2 * time.Second) // 단계별 지연
+	}
+}
+
+// runErrorScenario는 에러 시나리오를 실행합니다
+func (s *ScenarioService) runErrorScenario() {
+	targetStep := s.scenario.TargetStep
+
+	// 목표 단계까지 정상 진행
+	for i := 0; i <= targetStep.Index; i++ {
+		s.uiManager.SetCurrentStep(i)
+
+		if i == targetStep.Index {
+			// 에러 발생 단계
+			time.Sleep(1 * time.Second)
+			errMsg := fmt.Sprintf("%s 단계에서 오류 발생", targetStep.Name)
+			s.uiManager.ShowError(fmt.Errorf(errMsg))
+			return
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// handleRestore는 복원 프로세스를 처리합니다
+func (s *ScenarioService) handleRestore() {
+	if !s.scenario.TargetStep.NeedRestore {
+		return
+	}
+
+	s.logger.Info("복원 프로세스 시작")
+	time.Sleep(3 * time.Second) // 복원 시간 시뮬레이션
+	s.uiManager.ShowRestoreComplete()
 }
 
 ```
