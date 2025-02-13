@@ -84,7 +84,6 @@ dupdater/
     │   └── factory.go
     ├── ui/
     │   ├── components/
-    │   │   ├── resources.go
     │   │   └── status_card.go
     │   ├── fonts/
     │   │   └── fonts.go
@@ -93,8 +92,7 @@ dupdater/
     │   │   ├── light_variant.go
     │   │   ├── theme_variant.go
     │   │   └── types.go
-    │   ├── manager.go
-    │   └── resources.go
+    │   └── manager.go
     └── version/
     │   ├── domain/
     │       ├── entity/
@@ -129,7 +127,6 @@ import (
 	"github.com/kihyun1998/dupdater/internal/logger"
 	logEntity "github.com/kihyun1998/dupdater/internal/logger/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/network"
-	"github.com/kihyun1998/dupdater/internal/scenario"
 	"github.com/kihyun1998/dupdater/internal/ui"
 	"github.com/kihyun1998/dupdater/internal/ui/theme"
 	"github.com/kihyun1998/dupdater/internal/version"
@@ -147,9 +144,9 @@ var (
 	toVersion   = flag.String("toVersion", "", "업데이트할 버전")
 	serverName  = flag.String("server", "server1", "서버 프로필 이름")
 	testMode    = flag.Bool("test", false, "테스트 모드 활성화")
-	testType    = flag.String("testType", "", "테스트 시나리오 유형 (success, error1, error2, ..., error8)")
-	themeMode   = flag.String("theme", "light", "테마 모드 (light/dark)")
-	langMode    = flag.String("lang", "ko", "언어 설정 (ko/en)")
+	// testType    = flag.String("testType", "", "테스트 시나리오 유형 (success, error1, error2, ..., error8)")
+	themeMode = flag.String("theme", "light", "테마 모드 (light/dark)")
+	langMode  = flag.String("lang", "ko", "언어 설정 (ko/en)")
 )
 
 func main() {
@@ -335,58 +332,58 @@ func runTestMode(i18nManager i18n.Manager) {
 	uiManager.Run()
 }
 
-func runScenarioTest(i18nManager i18n.Manager) {
-	// 로거 초기화
-	logPath := getLogPath()
-	logger, err := logger.New(logger.Config{
-		LogPath:    logPath,
-		LogLevel:   logEntity.INFO,
-		MaxSize:    10 * 1024 * 1024,
-		MaxBackups: 5,
-	})
-	if err != nil {
-		fmt.Printf("로거 초기화 실패: %v\n", err)
-		os.Exit(1)
-	}
-	defer logger.Close()
+// func runScenarioTest(i18nManager i18n.Manager) {
+// 	// 로거 초기화
+// 	logPath := getLogPath()
+// 	logger, err := logger.New(logger.Config{
+// 		LogPath:    logPath,
+// 		LogLevel:   logEntity.INFO,
+// 		MaxSize:    10 * 1024 * 1024,
+// 		MaxBackups: 5,
+// 	})
+// 	if err != nil {
+// 		fmt.Printf("로거 초기화 실패: %v\n", err)
+// 		os.Exit(1)
+// 	}
+// 	defer logger.Close()
 
-	// 테스트용 버전 매니저 초기화
-	testVersionManager, err := version.New(version.Config{
-		Logger:      logger,
-		FromVersion: "V3.0.0(2024-01-01)",
-		ToVersion:   "V3.0.1(2024-02-01)",
-	})
-	if err != nil {
-		fmt.Printf("버전 매니저 초기화 실패: %v\n", err)
-		os.Exit(1)
-	}
+// 	// 테스트용 버전 매니저 초기화
+// 	testVersionManager, err := version.New(version.Config{
+// 		Logger:      logger,
+// 		FromVersion: "V3.0.0(2024-01-01)",
+// 		ToVersion:   "V3.0.1(2024-02-01)",
+// 	})
+// 	if err != nil {
+// 		fmt.Printf("버전 매니저 초기화 실패: %v\n", err)
+// 		os.Exit(1)
+// 	}
 
-	// UI 매니저 생성 - 인터페이스로 받음
-	uiManager := ui.New(ui.Config{
-		AppName:     AppName,
-		TotalSteps:  TotalSteps,
-		Logger:      logger,
-		FromVersion: testVersionManager.GetFromVersion(),
-		ToVersion:   testVersionManager.GetToVersion(),
-		Theme:       theme.GetCurrentVariant(),
-		I18n:        i18nManager,
-	})
+// 	// UI 매니저 생성 - 인터페이스로 받음
+// 	uiManager := ui.New(ui.Config{
+// 		AppName:     AppName,
+// 		TotalSteps:  TotalSteps,
+// 		Logger:      logger,
+// 		FromVersion: testVersionManager.GetFromVersion(),
+// 		ToVersion:   testVersionManager.GetToVersion(),
+// 		Theme:       theme.GetCurrentVariant(),
+// 		I18n:        i18nManager,
+// 	})
 
-	// 시나리오 매니저 생성
-	scenarioManager, err := scenario.New(scenario.Config{
-		Logger:       logger,
-		UIManager:    uiManager,
-		I18n:         i18nManager,
-		ScenarioType: *testType,
-	})
-	if err != nil {
-		fmt.Printf("시나리오 매니저 생성 실패: %v\n", err)
-		os.Exit(1)
-	}
+// 	// 시나리오 매니저 생성
+// 	scenarioManager, err := scenario.New(scenario.Config{
+// 		Logger:       logger,
+// 		UIManager:    uiManager,
+// 		I18n:         i18nManager,
+// 		ScenarioType: *testType,
+// 	})
+// 	if err != nil {
+// 		fmt.Printf("시나리오 매니저 생성 실패: %v\n", err)
+// 		os.Exit(1)
+// 	}
 
-	// 시나리오 실행
-	scenarioManager.Run()
-}
+// 	// 시나리오 실행
+// 	scenarioManager.Run()
+// }
 
 ```
 ## internal/app/updater.go
@@ -407,7 +404,6 @@ import (
 	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network"
-	"github.com/kihyun1998/dupdater/internal/ui"
 	"github.com/kihyun1998/dupdater/pkg/utils"
 	"golang.org/x/sys/windows"
 )
@@ -427,7 +423,7 @@ type Updater struct {
 	restoreCompleted bool   // 복원 상태 추적을 위한 필드
 
 	// 의존성들
-	ui          ui.Manager      // UI 관리자
+	ui          UIManager       // UI 관리자
 	logger      logger.Logger   // 로깅 시스템
 	network     network.Manager // 네트워크 관리자
 	fileManager file.Manager    // 파일 관리자
@@ -446,7 +442,7 @@ type Config struct {
 	ServerName       string
 	BackupCompleted  bool
 	RestoreCompleted bool
-	UIManager        ui.Manager
+	UIManager        UIManager
 	Logger           logger.Logger
 	NetworkManager   network.Manager
 	FileManager      file.Manager
@@ -757,6 +753,20 @@ func (u *Updater) handleError(message string, err error) error {
 
 	u.ui.ShowError(fmt.Errorf("%s: %v", message, err))
 	return fmt.Errorf("%s: %v", message, err)
+}
+
+// UIManager 인터페이스
+type UIManager interface {
+	SetCurrentStep(step int)
+	UpdateDetail(message string)
+	ShowError(err error)
+	Run()
+	Close()
+	SetRestoreHandler(handler func())
+	ShowRestoring()
+	ShowRestoreComplete()
+	GetTotalSteps() int
+	SetCompletionCallback(func())
 }
 
 ```
@@ -3439,70 +3449,6 @@ func (s *ScenarioService) handleRestore() {
 }
 
 ```
-## internal/ui/components/resources.go
-```go
-package components
-
-import "fyne.io/fyne/v2"
-
-var (
-	// 체크 아이콘 (완료 상태)
-	resourceCompletedIconSvg = &fyne.StaticResource{
-		StaticName: "completed.svg",
-		StaticContent: []byte(`
-<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="12" cy="12" r="10" stroke="#4ADE80" stroke-width="2"/>
-    <path d="M7 13l3 3 7-7" stroke="#4ADE80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
-`),
-	}
-
-	// 진행중 아이콘 (다운로드/설치 중)
-	resourceProgressIconSvg = &fyne.StaticResource{
-		StaticName: "progress.svg",
-		StaticContent: []byte(`
-<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M12 4v4M12 16v4M8 12H4m16 0h-4" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
-    <circle cx="12" cy="12" r="10" stroke="#60A5FA" stroke-width="2"/>
-</svg>
-`),
-	}
-
-	// 실패 아이콘 (에러 상태)
-	resourceFailedIconSvg = &fyne.StaticResource{
-		StaticName: "failed.svg",
-		StaticContent: []byte(`
-<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="12" cy="12" r="10" stroke="#F87171" stroke-width="2"/>
-    <path d="M8 8l8 8M16 8l-8 8" stroke="#F87171" stroke-width="2" stroke-linecap="round"/>
-</svg>
-`),
-	}
-
-	// 복원 아이콘 (백업 복원 중)
-	resourceRestoringIconSvg = &fyne.StaticResource{
-		StaticName: "restoring.svg",
-		StaticContent: []byte(`
-<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="12" cy="12" r="10" stroke="#FBBF24" stroke-width="2"/>
-    <path d="M16 12l-4-4m0 0l-4 4m4-4v8" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
-`),
-	}
-
-	// 경고 아이콘 (업데이트 취소됨)
-	resourceWarningIconSvg = &fyne.StaticResource{
-		StaticName: "warning.svg",
-		StaticContent: []byte(`
-<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="12" cy="12" r="10" stroke="#9CA3AF" stroke-width="2"/>
-    <path d="M12 8v5m0 3v.01" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round"/>
-</svg>
-`),
-	}
-)
-
-```
 ## internal/ui/components/status_card.go
 ```go
 package components
@@ -3906,21 +3852,6 @@ func (m *Manager) Run() {
 func (m *Manager) Close() {
 	m.mainWindow.Close()
 }
-
-```
-## internal/ui/resources.go
-```go
-package ui
-
-import "fyne.io/fyne/v2"
-
-var (
-	resourceIconPng = &fyne.StaticResource{
-		StaticName: "icon.png",
-		StaticContent: []byte(
-			"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x10\x00\x00\x00\x10\b\x06\x00\x00\x00\x1f\xf3\xffa\x00\x00\x00\x04sBIT\b\b\b\b|\bd\x88\x00\x00\x02\xc5IDAT8\x8d\x85\x92MhTg\x14\x86\x9f\xf3}\xdfܛ\x8c3\xcdh\x921F\x88\x99\n2\xa3\x84\x82at\xd1M\x9b\x14\xbbH\xa1\xd4E\xbb袋B\x9a\xe2\u0085-\xb8Ѕ\v\x05\x05\xfb\x03\x15\r\xa5d\xa9-\xb4tS\xdd\xd8\xd1\xfeQ\xdaJ\x11\x8a\x86\xa2\x92\x10\x8a\xc6h\x92I\x1a\x93ܹ\xf7\xbb\xa7\vG\xb1\xa1\xd2wy~\xde\xf7\x9c\xf7\x1c\xa1\x89Jo\x81\x13\xfb\x9e\xa7\xbf\xbc\xb1OD\xde\x01\x06\x10J\x00(\x13@MUG\xff\x9c\x9a\xff\xe3\xfdO~\xe4\xca\xf8=\x00\x04\xe0\x85\x9d\x9b\x19;4\x18\xb6\x04\xee$Ȉ\x88\x18\xfe\x03\xaa\x9a\x02g\xbc\xf7\a\xf6\x7f\xf8C\xf4\xe5\xe5[H\xa5\xb7\xc0\x85\x93\xaf\x86a\xe8\xbe\x11\x91\x81\x87\x82hб=\t\xda+ \x96da\x92\xe8\xceo\x0eT\x9aD5\xefӡ7\x0e_\x88\xecءAz\xba\xf2\x1f\x8b\x98\xd7\x1f)\xe5\xb6\xedm\xe4w\xbc\x19\xb8\xb6-d\nϚ\x96\xae~'6\x8c\xe3\xd9\xeb\x16@DJ\"\xb2\xa1Z)\x9e7\xfd\xe5b\x9f\x88\x8c<\x9eS\xac\x0f\xbbw\xe1W\xe6\xe2\xd9\xda{\xba\xf8\xfb\xe9\x18 \xe8\xa8ȓ\xeb\x880\xd2\xdb\xdd\xd6\xe7\x043\fO\xec\xac\xde\xce]>hM\xb6\xb3\x11t\xf6\x89+<\xf4QL&\xfd\xb7#b\x04\x86\x1d0\xb0֬u\xdb\xf66ZK{2iT\xf7~\xe9v\x93\\֖\x01\f\x18h\x9e\xaa\t\xbb\xae+Ζ\xf6d\xd2\xc6b:\xf7\xfdaY\xba~V\x9f\xdeO\xc9Ț\x84i)(\"\x82\x8f\x15M\b7U\x15\xc0\x84\xeb3&xƯ\xf1\x01\xa7ʤ\b\xe5G\xc1\xa4>a}\xb4\x90\xd8l\x87k\x1f\xfc(A\xbdK\x96\xee$6\xdbil~\xb3ׅ\x18P4Y\xb5\xaaL:\xa0\x06\x94]a\xeb\xaa\trҘ\xb9\x9a\xa9\xff|L\xc3M\u0558\xd4k4}ŀ`\xb3\x9d\x89_\x9e\xa1\xb5\xf7\xa5\xc4\xe5\xbau\xf1\xea\xa8\x05jF\xd1QEӤ~\xabE\x8c\x93\xb6\xea\x818ܸS\x1b\xf7\xc7u\xf5\xaf\x9fH\x1bK\x8aH*\xaeU\xb2[_\xd14\xaa\xa7\xf1\u0084W4UtT.\x9dz\x8d\xf2\x96\r\xa7D\xe4]\x00\tr\xbe\xb5\xe7\xc54,>\x87\xcdu\x81X\xf1\xcb3ڸw\x8d\x95\xa9K\x92\xae\u038b\t\xf2\xeaW\xe6>\x9d\x9e}\xb0O\xaa\xe5\"_\x1d\x1f\n\x9d5\x8f_\xf9\xff\xa0\xaa5U\x1dz\xfb跑\xbd}\xff\x01S\xd3\x7f\xfb\x97w\xf7|.\"\xed\x88\xf4\xcbS\x8e\xa6\x90\xa2zFU\xdf:\xf2ٯѹ\x8b7\xb0\x00\xe3\x93\xf3\xfcr\xed\xae\xafn/\x9e/䃯\x81\x14\xc8#\xe4\x01\x8fr\x13\xf8B\xd1ỳ\xcbc\xfb?\xf8Ο\xbbx\x03\x80\x7f\x00{,\"\xd2\xfe\x82\x93\xb1\x00\x00\x00\x00IEND\xaeB`\x82"),
-	}
-)
 
 ```
 ## internal/ui/theme/dark_variant.go
