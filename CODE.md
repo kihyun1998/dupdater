@@ -85,7 +85,16 @@ dupdater/
     ├── ui/
     │   ├── components/
     │   │   └── status_card.go
-    │   └── manager.go
+    │   ├── domain/
+    │   │   ├── entity/
+    │   │   │   └── ui_state.go
+    │   │   ├── repository/
+    │   │   │   └── ui_repository.go
+    │   │   └── usecase/
+    │   │   │   └── ui_service.go
+    │   ├── infrastructure/
+    │   │   └── fyne_manager.go
+    │   └── factory.go
     └── version/
     │   ├── domain/
     │       ├── entity/
@@ -410,6 +419,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network"
+	"github.com/kihyun1998/dupdater/internal/ui"
 	"github.com/kihyun1998/dupdater/pkg/utils"
 	"golang.org/x/sys/windows"
 )
@@ -429,7 +439,7 @@ type Updater struct {
 	restoreCompleted bool   // 복원 상태 추적을 위한 필드
 
 	// 의존성들
-	ui          UIManager       // UI 관리자
+	ui          ui.Manager      // UI 관리자
 	logger      logger.Logger   // 로깅 시스템
 	network     network.Manager // 네트워크 관리자
 	fileManager file.Manager    // 파일 관리자
@@ -448,7 +458,7 @@ type Config struct {
 	ServerName       string
 	BackupCompleted  bool
 	RestoreCompleted bool
-	UIManager        UIManager
+	UIManager        ui.Manager
 	Logger           logger.Logger
 	NetworkManager   network.Manager
 	FileManager      file.Manager
@@ -761,19 +771,19 @@ func (u *Updater) handleError(message string, err error) error {
 	return fmt.Errorf("%s: %v", message, err)
 }
 
-// UIManager 인터페이스
-type UIManager interface {
-	SetCurrentStep(step int)
-	UpdateDetail(message string)
-	ShowError(err error)
-	Run()
-	Close()
-	SetRestoreHandler(handler func())
-	ShowRestoring()
-	ShowRestoreComplete()
-	GetTotalSteps() int
-	SetCompletionCallback(func())
-}
+// // UIManager 인터페이스
+// type UIManager interface {
+// 	SetCurrentStep(step int)
+// 	UpdateDetail(message string)
+// 	ShowError(err error)
+// 	Run()
+// 	Close()
+// 	SetRestoreHandler(handler func())
+// 	ShowRestoring()
+// 	ShowRestoreComplete()
+// 	GetTotalSteps() int
+// 	SetCompletionCallback(func())
+// }
 
 ```
 ## internal/file/domain/entity/dir_info.go
@@ -3169,6 +3179,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/scenario/entity"
 	"github.com/kihyun1998/dupdater/internal/scenario/usecase"
+	"github.com/kihyun1998/dupdater/internal/ui"
 )
 
 // Manager는 시나리오 실행을 위한 인터페이스입니다
@@ -3179,7 +3190,7 @@ type Manager interface {
 // Config는 시나리오 매니저 생성에 필요한 설정입니다
 type Config struct {
 	Logger       logger.Logger
-	UIManager    UIManager
+	UIManager    ui.Manager
 	I18n         i18n.Manager
 	ScenarioType string
 }
@@ -3214,20 +3225,6 @@ func New(config Config) (Manager, error) {
 // Run은 시나리오를 실행합니다
 func (m *manager) Run() {
 	m.service.Run()
-}
-
-// UIManager 인터페이스
-type UIManager interface {
-	SetCurrentStep(step int)
-	UpdateDetail(message string)
-	ShowError(err error)
-	Run()
-	Close()
-	SetRestoreHandler(handler func())
-	ShowRestoring()
-	ShowRestoreComplete()
-	GetTotalSteps() int
-	SetCompletionCallback(func())
 }
 
 ```
@@ -3383,19 +3380,20 @@ import (
 
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/scenario/entity"
+	"github.com/kihyun1998/dupdater/internal/ui"
 )
 
 // ScenarioService는 시나리오 실행을 담당하는 서비스입니다
 type ScenarioService struct {
 	logger    logger.Logger
-	uiManager UIManager
+	uiManager ui.Manager
 	scenario  *entity.Scenario
 }
 
 // NewScenarioService는 새로운 ScenarioService를 생성합니다
 func NewScenarioService(
 	logger logger.Logger,
-	uiManager UIManager,
+	uiManager ui.Manager,
 	scenario *entity.Scenario,
 ) *ScenarioService {
 	return &ScenarioService{
@@ -3466,20 +3464,6 @@ func (s *ScenarioService) handleRestore() {
 	s.uiManager.ShowRestoreComplete()
 }
 
-// UIManager 인터페이스
-type UIManager interface {
-	SetCurrentStep(step int)
-	UpdateDetail(message string)
-	ShowError(err error)
-	Run()
-	Close()
-	SetRestoreHandler(handler func())
-	ShowRestoring()
-	ShowRestoreComplete()
-	GetTotalSteps() int
-	SetCompletionCallback(func())
-}
-
 ```
 ## internal/ui/components/status_card.go
 ```go
@@ -3515,7 +3499,9 @@ type StatusCard struct {
 	currentProgress float64
 	animating       bool
 	ticker          *time.Ticker
-	onComplete      func()
+
+	onComplete func()
+	onRestore  func()
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
@@ -3631,6 +3617,11 @@ func (s *StatusCard) SetCompletionCallback(callback func()) {
 	s.onComplete = callback
 }
 
+// SetRestoreHandler는 복원 핸들러를 설정합니다
+func (s *StatusCard) SetRestoreHandler(handler func()) {
+	s.onRestore = handler
+}
+
 // Refresh는 위젯을 새로고침합니다
 func (s *StatusCard) Refresh() {
 	s.container.Refresh()
@@ -3679,46 +3670,113 @@ func (s *StatusCard) animateProgress() {
 }
 
 ```
-## internal/ui/manager.go
+## internal/ui/domain/entity/ui_state.go
 ```go
-package ui
+package entity
+
+import "fmt"
+
+// UIState는 UI의 상태를 나타내는 도메인 엔티티입니다
+type UIState struct {
+	CurrentStep      int     // 현재 진행 단계
+	TotalSteps       int     // 전체 단계 수
+	Progress         float64 // 진행률 (0-1 사이 값)
+	DetailMessage    string  // 상세 메시지
+	FromVersion      string  // 시작 버전
+	ToVersion        string  // 목표 버전
+	IsError          bool    // 에러 상태 여부
+	IsRestoring      bool    // 복원 중 상태 여부
+	RestoreCompleted bool    // 복원 완료 상태
+}
+
+// NewUIState는 새로운 UIState 인스턴스를 생성합니다
+func NewUIState(totalSteps int, fromVersion, toVersion string) *UIState {
+	return &UIState{
+		CurrentStep:      0,
+		TotalSteps:       totalSteps,
+		Progress:         0.0,
+		FromVersion:      fromVersion,
+		ToVersion:        toVersion,
+		IsError:          false,
+		IsRestoring:      false,
+		RestoreCompleted: false,
+	}
+}
+
+// UpdateProgress는 현재 진행 상태를 업데이트합니다
+func (s *UIState) UpdateProgress(step int, message string) {
+	s.CurrentStep = step
+	s.DetailMessage = message
+	if s.TotalSteps > 0 {
+		s.Progress = float64(step) / float64(s.TotalSteps-1)
+	}
+}
+
+// SetError는 에러 상태로 변경합니다
+func (s *UIState) SetError() {
+	s.IsError = true
+}
+
+// SetRestoring는 복원 중 상태로 변경합니다
+func (s *UIState) SetRestoring() {
+	s.IsRestoring = true
+	s.IsError = false
+}
+
+// SetRestoreCompleted는 복원 완료 상태로 변경합니다
+func (s *UIState) SetRestoreCompleted() {
+	s.RestoreCompleted = true
+	s.IsRestoring = false
+}
+
+// IsCompleted는 업데이트가 완료되었는지 확인합니다
+func (s *UIState) IsCompleted() bool {
+	return s.Progress >= 1.0
+}
+
+// Validate는 상태가 유효한지 검증합니다
+func (s *UIState) Validate() error {
+	if s.TotalSteps <= 0 {
+		return fmt.Errorf("전체 단계 수는 0보다 커야 합니다")
+	}
+	if s.FromVersion == "" || s.ToVersion == "" {
+		return fmt.Errorf("버전 정보가 누락되었습니다")
+	}
+	return nil
+}
+
+```
+## internal/ui/domain/repository/ui_repository.go
+```go
+package repository
 
 import (
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/container"
 	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/logger"
-	"github.com/kihyun1998/dupdater/internal/ui/components"
+	"github.com/kihyun1998/dupdater/internal/ui/domain/entity"
 	"github.com/kihyun1998/dupdater/pkg/utils/theme"
 )
 
-// State는 UI의 현재 상태를 나타내는 구조체입니다
-type State struct {
-	CurrentStep int     // 현재 진행 단계
-	TotalSteps  int     // 전체 단계 수
-	Progress    float64 // 진행률 (0-100)
-	Detail      string  // 상세 메시지
+// UIRepository는 UI 상태 관리를 위한 저장소 인터페이스입니다
+type UIRepository interface {
+	// UIManager 인터페이스와 호환되는 메서드들
+	SetCurrentStep(step int)
+	UpdateDetail(message string)
+	ShowError(err error)
+	Run()
+	Close()
+	SetRestoreHandler(handler func())
+	ShowRestoring()
+	ShowRestoreComplete()
+	GetTotalSteps() int
+	SetCompletionCallback(func())
+
+	// 내부 상태 관리를 위한 추가 메서드
+	GetState() *entity.UIState
+	UpdateState(state *entity.UIState)
 }
 
-// Manager는 UI를 관리하는 구조체입니다
-type Manager struct {
-	app        fyne.App
-	mainWindow fyne.Window
-	logger     logger.Logger
-	i18n       i18n.Manager
-
-	totalSteps   int
-	currentStep  int
-	currentTheme theme.ThemeVariant
-	statusCard   *components.StatusCard
-	onRestore    func()
-
-	completionCallback func()
-	animationComplete  bool
-}
-
-// Config는 Manager 생성에 필요한 설정을 담는 구조체입니다
+// Config는 UI Repository 생성에 필요한 설정입니다
 type Config struct {
 	AppName     string
 	TotalSteps  int
@@ -3729,148 +3787,386 @@ type Config struct {
 	I18n        i18n.Manager
 }
 
-// New는 새로운 Manager 인스턴스를 생성합니다
-func New(config Config) *Manager {
-	// 앱 생성 및 테마 설정
+```
+## internal/ui/domain/usecase/ui_service.go
+```go
+// internal/ui/domain/usecase/ui_service.go
+
+package usecase
+
+import (
+	"sync"
+
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/ui/domain/repository"
+)
+
+// UIService는 UI 관련 비즈니스 로직을 처리합니다
+type UIService struct {
+	repo   repository.UIRepository
+	logger logger.Logger
+	mu     sync.RWMutex
+}
+
+// NewUIService는 새로운 UIService 인스턴스를 생성합니다
+func NewUIService(repo repository.UIRepository, logger logger.Logger) *UIService {
+	return &UIService{
+		repo:   repo,
+		logger: logger,
+	}
+}
+
+// SetCurrentStep은 현재 진행 단계를 설정합니다
+func (s *UIService) SetCurrentStep(step int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state := s.repo.GetState()
+	state.UpdateProgress(step, state.DetailMessage)
+	s.repo.UpdateState(state)
+	s.repo.SetCurrentStep(step)
+	s.logger.Info("현재 단계 업데이트: %d", step)
+}
+
+// UpdateDetail은 상세 메시지를 업데이트합니다
+func (s *UIService) UpdateDetail(message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state := s.repo.GetState()
+	state.DetailMessage = message
+	s.repo.UpdateState(state)
+	s.repo.UpdateDetail(message)
+	s.logger.Info("상세 메시지 업데이트: %s", message)
+}
+
+// ShowError는 에러 상태를 표시합니다
+func (s *UIService) ShowError(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state := s.repo.GetState()
+	state.SetError()
+	s.repo.UpdateState(state)
+	s.repo.ShowError(err)
+	s.logger.Error("에러 발생: %v", err)
+}
+
+// Run은 UI를 실행합니다
+func (s *UIService) Run() {
+	s.logger.Info("UI 실행")
+	s.repo.Run()
+}
+
+// Close는 UI를 종료합니다
+func (s *UIService) Close() {
+	s.logger.Info("UI 종료")
+	s.repo.Close()
+}
+
+// SetRestoreHandler는 복원 핸들러를 설정합니다
+func (s *UIService) SetRestoreHandler(handler func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.repo.SetRestoreHandler(handler)
+	s.logger.Info("복원 핸들러 설정됨")
+}
+
+// ShowRestoring은 복원 중 상태를 표시합니다
+func (s *UIService) ShowRestoring() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state := s.repo.GetState()
+	state.SetRestoring()
+	s.repo.UpdateState(state)
+	s.repo.ShowRestoring()
+	s.logger.Info("복원 중 상태로 변경")
+}
+
+// ShowRestoreComplete는 복원 완료 상태를 표시합니다
+func (s *UIService) ShowRestoreComplete() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	state := s.repo.GetState()
+	state.SetRestoreCompleted()
+	s.repo.UpdateState(state)
+	s.repo.ShowRestoreComplete()
+	s.logger.Info("복원 완료 상태로 변경")
+}
+
+// GetTotalSteps는 전체 단계 수를 반환합니다
+func (s *UIService) GetTotalSteps() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.repo.GetTotalSteps()
+}
+
+// SetCompletionCallback은 완료 콜백을 설정합니다
+func (s *UIService) SetCompletionCallback(callback func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.repo.SetCompletionCallback(callback)
+	s.logger.Info("완료 콜백 설정됨")
+}
+
+```
+## internal/ui/factory.go
+```go
+// internal/ui/factory.go
+
+package ui
+
+import (
+	"github.com/kihyun1998/dupdater/internal/i18n"
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/ui/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/ui/domain/usecase"
+	"github.com/kihyun1998/dupdater/internal/ui/infrastructure"
+	"github.com/kihyun1998/dupdater/pkg/utils/theme"
+)
+
+// Config는 UI 생성에 필요한 설정입니다
+type Config struct {
+	AppName     string
+	TotalSteps  int
+	FromVersion string
+	ToVersion   string
+	Logger      logger.Logger
+	Theme       theme.ThemeVariant
+	I18n        i18n.Manager
+}
+
+// Manager는 updater.UIManager와 동일한 인터페이스를 제공합니다
+type Manager interface {
+	SetCurrentStep(step int)
+	UpdateDetail(message string)
+	ShowError(err error)
+	Run()
+	Close()
+	SetRestoreHandler(handler func())
+	ShowRestoring()
+	ShowRestoreComplete()
+	GetTotalSteps() int
+	SetCompletionCallback(func())
+}
+
+// manager는 UI 관리자의 실제 구현체입니다
+type manager struct {
+	service *usecase.UIService
+}
+
+// New는 새로운 UI Manager를 생성합니다
+func New(config Config) Manager {
+	// repository 계층 초기화
+	repo := infrastructure.NewFyneManager(&repository.Config{
+		AppName:     config.AppName,
+		TotalSteps:  config.TotalSteps,
+		FromVersion: config.FromVersion,
+		ToVersion:   config.ToVersion,
+		Logger:      config.Logger,
+		Theme:       config.Theme,
+		I18n:        config.I18n,
+	})
+
+	// service 계층 초기화
+	service := usecase.NewUIService(repo, config.Logger)
+
+	return &manager{
+		service: service,
+	}
+}
+
+// Manager 인터페이스 구현
+func (m *manager) SetCurrentStep(step int) {
+	m.service.SetCurrentStep(step)
+}
+
+func (m *manager) UpdateDetail(message string) {
+	m.service.UpdateDetail(message)
+}
+
+func (m *manager) ShowError(err error) {
+	m.service.ShowError(err)
+}
+
+func (m *manager) Run() {
+	m.service.Run()
+}
+
+func (m *manager) Close() {
+	m.service.Close()
+}
+
+func (m *manager) SetRestoreHandler(handler func()) {
+	m.service.SetRestoreHandler(handler)
+}
+
+func (m *manager) ShowRestoring() {
+	m.service.ShowRestoring()
+}
+
+func (m *manager) ShowRestoreComplete() {
+	m.service.ShowRestoreComplete()
+}
+
+func (m *manager) GetTotalSteps() int {
+	return m.service.GetTotalSteps()
+}
+
+func (m *manager) SetCompletionCallback(callback func()) {
+	m.service.SetCompletionCallback(callback)
+}
+
+```
+## internal/ui/infrastructure/fyne_manager.go
+```go
+// internal/ui/infrastructure/fyne_manager.go
+
+package infrastructure
+
+import (
+	"sync"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
+	"github.com/kihyun1998/dupdater/internal/i18n"
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/ui/components"
+	"github.com/kihyun1998/dupdater/internal/ui/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/ui/domain/repository"
+	"github.com/kihyun1998/dupdater/pkg/utils/theme"
+)
+
+// FyneManager는 Fyne 기반 UI 구현체입니다
+type FyneManager struct {
+	app        fyne.App
+	mainWindow fyne.Window
+	statusCard *components.StatusCard
+	state      *entity.UIState
+	logger     logger.Logger
+	i18n       i18n.Manager
+	theme      theme.ThemeVariant
+	mu         sync.RWMutex
+}
+
+// NewFyneManager는 새로운 FyneManager를 생성합니다
+func NewFyneManager(config *repository.Config) *FyneManager {
+	// Fyne 앱 생성
 	fyneApp := app.New()
 	customTheme := theme.NewCustomTheme(config.Theme)
 	fyneApp.Settings().SetTheme(customTheme)
 
-	manager := &Manager{
-		app:               fyneApp,
-		logger:            config.Logger,
-		i18n:              config.I18n,
-		totalSteps:        config.TotalSteps,
-		currentStep:       0,
-		animationComplete: false,
-		currentTheme:      config.Theme,
+	// 상태 초기화
+	state := entity.NewUIState(
+		config.TotalSteps,
+		config.FromVersion,
+		config.ToVersion,
+	)
+
+	manager := &FyneManager{
+		app:    fyneApp,
+		state:  state,
+		logger: config.Logger,
+		i18n:   config.I18n,
+		theme:  config.Theme,
 	}
 
-	// 메인 윈도우 생성
-	manager.mainWindow = manager.app.NewWindow(
-		manager.i18n.GetMessage("update.title"),
-	)
-	manager.initializeUI(config)
+	// 메인 윈도우 초기화
+	manager.initWindow()
+	manager.initUI()
 
 	return manager
 }
 
-// initializeUI는 UI 컴포넌트들을 초기화하고 배치합니다
-func (m *Manager) initializeUI(config Config) {
-	// StatusCard 생성 시 테마 전달
-	m.statusCard = components.NewStatusCard(
-		config.FromVersion,
-		config.ToVersion,
-		m.currentTheme,
-		m.i18n,
-	)
-
-	// 이미 설정된 completion callback이 있다면 설정
-	if m.completionCallback != nil {
-		m.statusCard.SetCompletionCallback(func() {
-			if !m.animationComplete {
-				m.animationComplete = true
-				m.completionCallback()
-			}
-		})
-	}
-
-	// 배경색 설정
-	content := container.NewPadded(m.statusCard)
-	content.Resize(fyne.NewSize(400, 150))
-
-	m.mainWindow.SetContent(content)
+// initWindow은 메인 윈도우를 초기화합니다
+func (m *FyneManager) initWindow() {
+	m.mainWindow = m.app.NewWindow(m.i18n.GetMessage("update.title"))
 	m.mainWindow.Resize(fyne.NewSize(400, 150))
 	m.mainWindow.CenterOnScreen()
 	m.mainWindow.SetFixedSize(true)
 }
 
-// SetCurrentStep은 현재 진행 단계를 업데이트합니다
-func (m *Manager) SetCurrentStep(step int) {
-	// step에 따른 적절한 메시지 설정
-	messageKeys := map[int]string{
-		0: "update.status.checking",
-		1: "update.status.getting_info",
-		2: "update.status.preparing",
-		3: "update.status.downloading",
-		4: "update.status.verifying",
-		5: "update.status.installing",
-		6: "update.status.finalizing",
-		7: "update.status.completed",
-	}
-	if msgKey, ok := messageKeys[step]; ok {
-		var progress float64
-		if step == m.totalSteps-1 {
-			progress = 1.0
-		} else {
-			progress = float64(step) / float64(m.totalSteps-1)
-		}
+// initUI는 UI 컴포넌트를 초기화합니다
+func (m *FyneManager) initUI() {
+	m.statusCard = components.NewStatusCard(
+		m.state.FromVersion,
+		m.state.ToVersion,
+		m.theme,
+		m.i18n,
+	)
 
-		m.logger.Info("업데이트 진행률: %.2f%%, 단계: %d/%d", progress*100, step, m.totalSteps-1)
-		m.statusCard.UpdateStatus(progress, m.i18n.GetMessage(msgKey))
-	}
+	content := container.NewPadded(m.statusCard)
+	m.mainWindow.SetContent(content)
+}
+
+// GetState는 현재 UI 상태를 반환합니다
+func (m *FyneManager) GetState() *entity.UIState {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.state
+}
+
+// UpdateState는 UI 상태를 업데이트합니다
+func (m *FyneManager) UpdateState(state *entity.UIState) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.state = state
+}
+
+// SetCurrentStep은 현재 진행 단계를 설정합니다
+func (m *FyneManager) SetCurrentStep(step int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	progress := float64(step) / float64(m.state.TotalSteps-1)
+	m.statusCard.UpdateStatus(progress, m.state.DetailMessage)
 }
 
 // UpdateDetail은 상세 메시지를 업데이트합니다
-func (m *Manager) UpdateDetail(message string) {
+func (m *FyneManager) UpdateDetail(message string) {
 	m.statusCard.UpdateStatus(-1, message)
 }
 
-// ShowError는 에러 메시지를 표시합니다
-func (m *Manager) ShowError(err error) {
+// ShowError는 에러 상태를 표시합니다
+func (m *FyneManager) ShowError(err error) {
 	m.statusCard.SetError(err.Error())
-	if m.onRestore != nil {
-		m.ShowRestoring()
-		go m.onRestore()
-	}
-}
-
-// ShowProgress는 다운로드 진행률을 표시합니다
-func (m *Manager) ShowProgress(current, total int64) {
-	m.statusCard.SetProgress(current, total)
-}
-
-// ShowRestoring은 복원 진행 중임을 표시합니다
-func (m *Manager) ShowRestoring() {
-	m.statusCard.SetRestoring(m.i18n.GetMessage("update.restore.in_progress"))
-}
-
-// ShowRestoreComplete는 복원 완료를 표시합니다
-func (m *Manager) ShowRestoreComplete() {
-	m.statusCard.SetRestoreComplete()
-}
-
-// SetRestoreHandler는 복구 핸들러를 설정합니다
-func (m *Manager) SetRestoreHandler(handler func()) {
-	m.onRestore = handler
-}
-
-// GetTotalSteps는 전체 단계 수를 반환합니다
-func (m *Manager) GetTotalSteps() int {
-	return m.totalSteps
-}
-
-// SetCompletionCallback은 완료 콜백을 설정합니다
-func (m *Manager) SetCompletionCallback(callback func()) {
-	m.completionCallback = callback
-	if m.statusCard != nil {
-		m.statusCard.SetCompletionCallback(func() {
-			if m.completionCallback != nil && !m.animationComplete {
-				m.animationComplete = true
-				m.completionCallback()
-			}
-		})
-	}
 }
 
 // Run은 UI를 실행합니다
-func (m *Manager) Run() {
+func (m *FyneManager) Run() {
 	m.mainWindow.ShowAndRun()
 }
 
 // Close는 UI를 종료합니다
-func (m *Manager) Close() {
+func (m *FyneManager) Close() {
 	m.mainWindow.Close()
+}
+
+// SetRestoreHandler는 복원 핸들러를 설정합니다
+func (m *FyneManager) SetRestoreHandler(handler func()) {
+	m.statusCard.SetRestoreHandler(handler)
+}
+
+// ShowRestoring은 복원 중 상태를 표시합니다
+func (m *FyneManager) ShowRestoring() {
+	m.statusCard.SetRestoring(m.i18n.GetMessage("update.restore.in_progress"))
+}
+
+// ShowRestoreComplete는 복원 완료 상태를 표시합니다
+func (m *FyneManager) ShowRestoreComplete() {
+	m.statusCard.SetRestoreComplete()
+}
+
+// GetTotalSteps는 전체 단계 수를 반환합니다
+func (m *FyneManager) GetTotalSteps() int {
+	return m.state.TotalSteps
+}
+
+// SetCompletionCallback은 완료 콜백을 설정합니다
+func (m *FyneManager) SetCompletionCallback(callback func()) {
+	m.statusCard.SetCompletionCallback(callback)
 }
 
 ```

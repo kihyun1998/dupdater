@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kihyun1998/dupdater/internal/app"
 	"github.com/kihyun1998/dupdater/internal/file"
 	"github.com/kihyun1998/dupdater/internal/hash"
 	"github.com/kihyun1998/dupdater/internal/i18n"
@@ -15,6 +14,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/internal/scenario"
 	"github.com/kihyun1998/dupdater/internal/ui"
+	"github.com/kihyun1998/dupdater/internal/updater"
 	"github.com/kihyun1998/dupdater/internal/version"
 	"github.com/kihyun1998/dupdater/pkg/utils/theme"
 )
@@ -145,7 +145,7 @@ func main() {
 	}
 
 	// 10. Updater 생성 및 시작
-	updater := app.New(app.Config{
+	updater, err := updater.New(updater.Config{
 		AppName:         TargetAppName,
 		FromVersion:     *fromVersion,
 		ServerName:      *serverName,
@@ -157,6 +157,10 @@ func main() {
 		HashManager:     hashManager,
 		I18n:            i18nManager,
 	})
+	if err != nil {
+		logger.Error("Failed to initialize updater: %v", err)
+		os.Exit(1)
+	}
 
 	// 11. 업데이트 프로세스 시작
 	updater.Start()

@@ -142,6 +142,7 @@ func WaitForApplicationToClose(appName string, onWait func(string)) error {
 // LaunchApplication은 새 버전의 애플리케이션을 실행합니다
 func LaunchApplication(execPath string, args []string) error {
 	cmd := exec.Command(execPath, args...)
+	// Windows 특정 설정 추가
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: windows.CREATE_NEW_CONSOLE,
 	}
