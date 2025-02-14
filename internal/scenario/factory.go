@@ -8,7 +8,6 @@ import (
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/scenario/entity"
 	"github.com/kihyun1998/dupdater/internal/scenario/usecase"
-	"github.com/kihyun1998/dupdater/internal/ui"
 )
 
 // Manager는 시나리오 실행을 위한 인터페이스입니다
@@ -19,7 +18,7 @@ type Manager interface {
 // Config는 시나리오 매니저 생성에 필요한 설정입니다
 type Config struct {
 	Logger       logger.Logger
-	UIManager    ui.Manager
+	UIManager    UIManager
 	I18n         i18n.Manager
 	ScenarioType string
 }
@@ -54,4 +53,18 @@ func New(config Config) (Manager, error) {
 // Run은 시나리오를 실행합니다
 func (m *manager) Run() {
 	m.service.Run()
+}
+
+// UIManager 인터페이스
+type UIManager interface {
+	SetCurrentStep(step int)
+	UpdateDetail(message string)
+	ShowError(err error)
+	Run()
+	Close()
+	SetRestoreHandler(handler func())
+	ShowRestoring()
+	ShowRestoreComplete()
+	GetTotalSteps() int
+	SetCompletionCallback(func())
 }
