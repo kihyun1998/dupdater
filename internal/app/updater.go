@@ -14,6 +14,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/i18n"
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/network"
+	"github.com/kihyun1998/dupdater/internal/ui"
 	"github.com/kihyun1998/dupdater/pkg/utils"
 	"golang.org/x/sys/windows"
 )
@@ -33,7 +34,7 @@ type Updater struct {
 	restoreCompleted bool   // 복원 상태 추적을 위한 필드
 
 	// 의존성들
-	ui          UIManager       // UI 관리자
+	ui          ui.Manager      // UI 관리자
 	logger      logger.Logger   // 로깅 시스템
 	network     network.Manager // 네트워크 관리자
 	fileManager file.Manager    // 파일 관리자
@@ -52,7 +53,7 @@ type Config struct {
 	ServerName       string
 	BackupCompleted  bool
 	RestoreCompleted bool
-	UIManager        UIManager
+	UIManager        ui.Manager
 	Logger           logger.Logger
 	NetworkManager   network.Manager
 	FileManager      file.Manager
@@ -365,16 +366,16 @@ func (u *Updater) handleError(message string, err error) error {
 	return fmt.Errorf("%s: %v", message, err)
 }
 
-// UIManager 인터페이스
-type UIManager interface {
-	SetCurrentStep(step int)
-	UpdateDetail(message string)
-	ShowError(err error)
-	Run()
-	Close()
-	SetRestoreHandler(handler func())
-	ShowRestoring()
-	ShowRestoreComplete()
-	GetTotalSteps() int
-	SetCompletionCallback(func())
-}
+// // UIManager 인터페이스
+// type UIManager interface {
+// 	SetCurrentStep(step int)
+// 	UpdateDetail(message string)
+// 	ShowError(err error)
+// 	Run()
+// 	Close()
+// 	SetRestoreHandler(handler func())
+// 	ShowRestoring()
+// 	ShowRestoreComplete()
+// 	GetTotalSteps() int
+// 	SetCompletionCallback(func())
+// }

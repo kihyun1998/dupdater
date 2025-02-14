@@ -6,19 +6,20 @@ import (
 
 	"github.com/kihyun1998/dupdater/internal/logger"
 	"github.com/kihyun1998/dupdater/internal/scenario/entity"
+	"github.com/kihyun1998/dupdater/internal/ui"
 )
 
 // ScenarioService는 시나리오 실행을 담당하는 서비스입니다
 type ScenarioService struct {
 	logger    logger.Logger
-	uiManager UIManager
+	uiManager ui.Manager
 	scenario  *entity.Scenario
 }
 
 // NewScenarioService는 새로운 ScenarioService를 생성합니다
 func NewScenarioService(
 	logger logger.Logger,
-	uiManager UIManager,
+	uiManager ui.Manager,
 	scenario *entity.Scenario,
 ) *ScenarioService {
 	return &ScenarioService{
@@ -87,18 +88,4 @@ func (s *ScenarioService) handleRestore() {
 	s.logger.Info("복원 프로세스 시작")
 	time.Sleep(3 * time.Second) // 복원 시간 시뮬레이션
 	s.uiManager.ShowRestoreComplete()
-}
-
-// UIManager 인터페이스
-type UIManager interface {
-	SetCurrentStep(step int)
-	UpdateDetail(message string)
-	ShowError(err error)
-	Run()
-	Close()
-	SetRestoreHandler(handler func())
-	ShowRestoring()
-	ShowRestoreComplete()
-	GetTotalSteps() int
-	SetCompletionCallback(func())
 }

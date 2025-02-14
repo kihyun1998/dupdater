@@ -30,7 +30,9 @@ type StatusCard struct {
 	currentProgress float64
 	animating       bool
 	ticker          *time.Ticker
-	onComplete      func()
+
+	onComplete func()
+	onRestore  func()
 }
 
 // NewStatusCard는 새로운 StatusCard를 생성합니다
@@ -144,6 +146,11 @@ func (s *StatusCard) SetProgress(current, total int64) {
 // SetCompletionCallback은 진행률 100% 도달 시 실행될 콜백을 설정합니다
 func (s *StatusCard) SetCompletionCallback(callback func()) {
 	s.onComplete = callback
+}
+
+// SetRestoreHandler는 복원 핸들러를 설정합니다
+func (s *StatusCard) SetRestoreHandler(handler func()) {
+	s.onRestore = handler
 }
 
 // Refresh는 위젯을 새로고침합니다
