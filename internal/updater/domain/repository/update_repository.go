@@ -54,6 +54,3 @@ type Config struct {
 	HashManager hash.Manager
 	I18n        i18n.Manager
 }
-
-// WithProgress는 진행 상태 전달을 위한 콜백 함수 타입입니다
-type WithProgress func(step int, message string)
