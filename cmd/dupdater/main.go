@@ -99,6 +99,7 @@ func main() {
 	logger.Info("업데이트 진행: %s -> %s", versionManager.GetFromVersion(), versionManager.GetToVersion())
 
 	// 6. UI 매니저 초기화
+
 	uiManager := ui.New(ui.Config{
 		AppName:     AppName,
 		TotalSteps:  TotalSteps,
