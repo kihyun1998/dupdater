@@ -16,7 +16,7 @@ fyne bundle -package fonts -o internal/ui/fonts/medium.go assets/fonts/Pretendar
 ## 커스텀 아이콘 사용하는 방법
 
 ```bash
-fyne bundle -o bundled.go icon.png
+fyne bundle -package logo -o pkg/utils/logo/acra_logo.go assets/logo/acra_logo.png
 ```
 
 ```go
