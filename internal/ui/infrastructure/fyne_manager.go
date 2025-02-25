@@ -60,9 +60,10 @@ func NewFyneManager(config *repository.Config) *FyneManager {
 // initWindow은 메인 윈도우를 초기화합니다
 func (m *FyneManager) initWindow() {
 	m.mainWindow = m.app.NewWindow(m.i18n.GetMessage("update.title"))
+
 	m.mainWindow.Resize(fyne.NewSize(400, 150))
 	m.mainWindow.CenterOnScreen()
-	m.mainWindow.SetFixedSize(true)
+	m.mainWindow.SetFixedSize(false)
 }
 
 // initUI는 UI 컴포넌트를 초기화합니다

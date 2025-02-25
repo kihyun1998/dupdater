@@ -29,7 +29,7 @@ const (
 var (
 	fromVersion = flag.String("fromVersion", "", "현재 앱 버전")
 	toVersion   = flag.String("toVersion", "", "업데이트할 버전")
-	serverName  = flag.String("server", "server1", "서버 프로필 이름")
+	serverName  = flag.String("server", "", "서버 프로필 이름")
 	testMode    = flag.Bool("test", false, "테스트 모드 활성화")
 	testType    = flag.String("testType", "", "테스트 시나리오 유형 (success, error1, error2, ..., error8)")
 	themeMode   = flag.String("theme", "light", "테마 모드 (light/dark)")

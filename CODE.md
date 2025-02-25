@@ -7,8 +7,6 @@ dupdater/
     └── dupdater/
     │   └── main.go
 ├── internal/
-    ├── app/
-    │   └── updater.go
     ├── file/
     │   ├── domain/
     │   │   ├── entity/
@@ -95,6 +93,18 @@ dupdater/
     │   ├── infrastructure/
     │   │   └── fyne_manager.go
     │   └── factory.go
+    ├── updater/
+    │   ├── domain/
+    │   │   ├── entity/
+    │   │   │   ├── update_config.go
+    │   │   │   └── update_status.go
+    │   │   ├── repository/
+    │   │   │   └── update_repository.go
+    │   │   └── usecase/
+    │   │   │   └── update_service.go
+    │   ├── infrastructure/
+    │   │   └── update_manager.go
+    │   └── factory.go
     └── version/
     │   ├── domain/
     │       ├── entity/
@@ -129,7 +139,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kihyun1998/dupdater/internal/app"
 	"github.com/kihyun1998/dupdater/internal/file"
 	"github.com/kihyun1998/dupdater/internal/hash"
 	"github.com/kihyun1998/dupdater/internal/i18n"
@@ -138,6 +147,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/network"
 	"github.com/kihyun1998/dupdater/internal/scenario"
 	"github.com/kihyun1998/dupdater/internal/ui"
+	"github.com/kihyun1998/dupdater/internal/updater"
 	"github.com/kihyun1998/dupdater/internal/version"
 	"github.com/kihyun1998/dupdater/pkg/utils/theme"
 )
@@ -152,7 +162,7 @@ const (
 var (
 	fromVersion = flag.String("fromVersion", "", "현재 앱 버전")
 	toVersion   = flag.String("toVersion", "", "업데이트할 버전")
-	serverName  = flag.String("server", "server1", "서버 프로필 이름")
+	serverName  = flag.String("server", "", "서버 프로필 이름")
 	testMode    = flag.Bool("test", false, "테스트 모드 활성화")
 	testType    = flag.String("testType", "", "테스트 시나리오 유형 (success, error1, error2, ..., error8)")
 	themeMode   = flag.String("theme", "light", "테마 모드 (light/dark)")
@@ -268,7 +278,7 @@ func main() {
 	}
 
 	// 10. Updater 생성 및 시작
-	updater := app.New(app.Config{
+	updater, err := updater.New(updater.Config{
 		AppName:         TargetAppName,
 		FromVersion:     *fromVersion,
 		ServerName:      *serverName,
@@ -280,6 +290,10 @@ func main() {
 		HashManager:     hashManager,
 		I18n:            i18nManager,
 	})
+	if err != nil {
+		logger.Error("Failed to initialize updater: %v", err)
+		os.Exit(1)
+	}
 
 	// 11. 업데이트 프로세스 시작
 	updater.Start()
@@ -399,391 +413,6 @@ func runScenarioTest(i18nManager i18n.Manager) {
 	// 시나리오 실행
 	scenarioManager.Run()
 }
-
-```
-## internal/app/updater.go
-```go
-// Package app은 업데이터의 핵심 어플리케이션 로직을 포함합니다
-package app
-
-import (
-	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"syscall"
-	"time"
-
-	"github.com/kihyun1998/dupdater/internal/file"
-	"github.com/kihyun1998/dupdater/internal/hash"
-	"github.com/kihyun1998/dupdater/internal/i18n"
-	"github.com/kihyun1998/dupdater/internal/logger"
-	"github.com/kihyun1998/dupdater/internal/network"
-	"github.com/kihyun1998/dupdater/internal/ui"
-	"github.com/kihyun1998/dupdater/pkg/utils"
-	"golang.org/x/sys/windows"
-)
-
-const (
-	appName  = "simple_update_test.exe"
-	waitTime = 5 * time.Second // 충분한 대기 시간 설정
-)
-
-// Updater는 업데이트 프로세스의 전체 흐름을 제어하는 구조체입니다
-type Updater struct {
-	// 기본 설정
-	appName          string // 업데이트할 애플리케이션의 이름
-	fromVersion      string // 현재 애플리케이션의 버전
-	serverName       string // 서버 프로필 이름
-	backupCompleted  bool   // 백업 상태 추적을 위한 필드
-	restoreCompleted bool   // 복원 상태 추적을 위한 필드
-
-	// 의존성들
-	ui          ui.Manager      // UI 관리자
-	logger      logger.Logger   // 로깅 시스템
-	network     network.Manager // 네트워크 관리자
-	fileManager file.Manager    // 파일 관리자
-	hashManager hash.Manager    // 해시 관리자
-	i18n        i18n.Manager    // 다국어 관리자
-
-	// 상태 정보
-	serverIP   string // 조회된 서버 IP
-	updateFile string // 다운로드된 업데이트 파일 경로
-}
-
-// Config는 새로운 Updater를 생성할 때 필요한 설정을 담는 구조체입니다
-type Config struct {
-	AppName          string
-	FromVersion      string
-	ServerName       string
-	BackupCompleted  bool
-	RestoreCompleted bool
-	UIManager        ui.Manager
-	Logger           logger.Logger
-	NetworkManager   network.Manager
-	FileManager      file.Manager
-	HashManager      hash.Manager
-	I18n             i18n.Manager
-}
-
-// New는 새로운 Updater 인스턴스를 생성합니다
-func New(config Config) *Updater {
-	return &Updater{
-		appName:          config.AppName,
-		fromVersion:      config.FromVersion,
-		serverName:       config.ServerName,
-		backupCompleted:  config.BackupCompleted,
-		restoreCompleted: config.RestoreCompleted,
-		ui:               config.UIManager,
-		logger:           config.Logger,
-		network:          config.NetworkManager,
-		fileManager:      config.FileManager,
-		hashManager:      config.HashManager,
-		i18n:             config.I18n,
-	}
-}
-
-// Start는 업데이트 프로세스를 시작합니다
-func (u *Updater) Start() {
-	// UI 복구 핸들러 설정
-	u.ui.SetRestoreHandler(func() {
-		if err := u.restoreFiles(); err != nil {
-			u.logger.Error("파일 복원 실패: %v", err)
-			u.ui.ShowError(fmt.Errorf("복원 실패: %w", err))
-		} else {
-			u.ui.UpdateDetail(u.i18n.GetMessage("update.restore.completed"))
-		}
-	})
-
-	// 업데이트 프로세스 시작
-	go func() {
-		if err := u.processUpdate(); err != nil {
-			u.logger.Error("업데이트 실패: %v", err)
-			u.ui.ShowError(err)
-		}
-	}()
-
-	// UI 실행 (메인 스레드에서 실행)
-	u.ui.Run()
-}
-
-func (u *Updater) processUpdate() error {
-
-	defer func() {
-		if r := recover(); r != nil {
-			u.logger.Error("업데이트 프로세스 중 패닉 발생: %v", r)
-			u.handleError("예기치 못한 오류 발생", fmt.Errorf("%v", r))
-		}
-	}()
-
-	// 1. 애플리케이션 실행 상태 확인
-	if err := u.checkRunningApp(); err != nil {
-		return u.handleError("애플리케이션 상태 확인 실패: %w", err)
-	}
-
-	// 2. 서버 IP 가져오기
-	if err := u.getServerIP(); err != nil {
-		return u.handleError("서버 IP 가져오기 실패: %w", err)
-	}
-
-	// 3. 파일 백업
-	if err := u.backupFiles(); err != nil {
-		return u.handleError("파일 백업 실패: %w", err)
-	}
-	u.backupCompleted = true // 백업 완료 상태 설정
-	// 4. 업데이트 파일 다운로드
-	if err := u.downloadUpdateFile(); err != nil {
-		return u.handleError("업데이트 파일 다운로드 실패", err)
-	}
-
-	// 5. 업데이트 파일 검증
-	if err := u.verifyUpdateFile(); err != nil {
-		return u.handleError("업데이트 파일 검증 실패", err)
-	}
-
-	// 6. 파일 압축해제
-	if err := u.extractUpdateFile(); err != nil {
-		return u.handleError("파일 압축해제 실패", err)
-	}
-
-	// 7. 압축해제된 파일들 검증
-	if err := u.verifyExtractedFiles(); err != nil {
-		return u.handleError("압축해제된 파일 검증 실패", err)
-	}
-
-	// 8. 애플리케이션 재시작
-	if err := u.restartApplication(); err != nil {
-		return u.handleError("애플리케이션 재시작 실패", err)
-	}
-
-	return nil
-}
-
-func (u *Updater) checkRunningApp() error {
-	const maxAttempts = 30
-	u.ui.SetCurrentStep(0)
-	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.checking"))
-
-	for attempt := 0; attempt < maxAttempts; attempt++ {
-		isRunning, _ := utils.CheckApplicationRunning(appName)
-		if !isRunning {
-			return nil
-		}
-		time.Sleep(time.Second)
-	}
-
-	return fmt.Errorf("앱 종료 대기 시간 초과")
-}
-
-func (u *Updater) getServerIP() error {
-	u.ui.SetCurrentStep(1)
-	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.getting_info"))
-
-	ip, err := u.network.GetServerIP(u.serverName)
-	if err != nil {
-		return err
-	}
-
-	u.serverIP = ip
-	return nil
-}
-
-func (u *Updater) backupFiles() error {
-	u.ui.SetCurrentStep(2)
-	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.preparing"))
-	return u.fileManager.Backup()
-}
-
-func (u *Updater) downloadUpdateFile() error {
-	u.ui.SetCurrentStep(3)
-	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.downloading"))
-
-	filename, err := u.network.GetUpdateFileName(u.serverIP)
-	if err != nil {
-		return err
-	}
-
-	resp, err := u.network.DownloadFile(u.serverIP, filename)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	// 파일 생성 및 저장 로직 추가
-	out, err := os.Create(filename)
-	if err != nil {
-		return fmt.Errorf("파일 생성 실패: %v", err)
-	}
-	defer out.Close()
-
-	// 파일 쓰기
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return fmt.Errorf("파일 쓰기 실패: %v", err)
-	}
-
-	u.updateFile = filename
-	return nil
-}
-
-func (u *Updater) verifyUpdateFile() error {
-	u.ui.SetCurrentStep(4)
-	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.verifying"))
-	return u.hashManager.VerifyUpdateFile(u.updateFile)
-}
-
-func (u *Updater) extractUpdateFile() error {
-	u.ui.SetCurrentStep(5)
-	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.installing"))
-
-	if err := u.fileManager.ExtractZip(u.updateFile); err != nil {
-		return err
-	}
-
-	return u.fileManager.DeleteFile(u.updateFile)
-}
-
-func (u *Updater) verifyExtractedFiles() error {
-	u.ui.SetCurrentStep(6)
-	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.finalizing"))
-	return u.hashManager.VerifyHashSum()
-}
-
-func (u *Updater) restartApplication() error {
-	// 마지막 단계 메시지 표시
-	u.ui.SetCurrentStep(u.ui.GetTotalSteps() - 1)
-	u.ui.UpdateDetail(u.i18n.GetMessage("update.status.completed"))
-
-	// 프로그레스바가 100%까지 도달할 때까지 대기하기 위한 채널
-	completionCh := make(chan struct{})
-
-	// UI에 완료 콜백 설정
-	u.ui.SetCompletionCallback(func() {
-		// 앱 실행 준비
-		cmd := exec.Command(fmt.Sprintf("./%s", u.appName), "--patch", "--fromVersion", u.fromVersion)
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			CreationFlags: windows.CREATE_NEW_CONSOLE,
-		}
-
-		// 앱 실행
-		if err := cmd.Start(); err != nil {
-			u.logger.Error("애플리케이션 실행 실패: %v", err)
-			return
-		}
-
-		// 2초 대기 후 UI 종료
-		time.Sleep(2 * time.Second)
-		close(completionCh)
-	})
-
-	// 완료 대기
-	<-completionCh
-	u.ui.Close()
-
-	return nil
-}
-
-// restartAfterRestore는 복원 완료 후 애플리케이션을 재시작합니다
-func (u *Updater) restartAfterRestore() error {
-	u.ui.SetCurrentStep(0)
-	u.ui.UpdateDetail(u.i18n.GetMessage("update.restore.completed"))
-
-	// 잠시 대기하여 메시지가 표시되도록 함
-	time.Sleep(2 * time.Second)
-
-	// 기존 버전으로 앱 실행 준비
-	cmd := exec.Command(fmt.Sprintf("./%s", u.appName))
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: windows.CREATE_NEW_CONSOLE,
-	}
-
-	// 앱 실행
-	if err := cmd.Start(); err != nil {
-		u.logger.Error("복원 후 애플리케이션 실행 실패: %v", err)
-		return err
-	}
-
-	// UI 종료 전 잠시 대기
-	time.Sleep(2 * time.Second)
-	u.ui.Close()
-
-	return nil
-}
-
-func (u *Updater) restoreFiles() error {
-	if u.restoreCompleted {
-		u.logger.Error("restoreFiles()가 중복 실행되려 했으나, 이미 복원이 완료된 상태입니다. 중단함.")
-		return nil
-	}
-
-	u.logger.Info("파일 복원 시작")
-	if err := u.fileManager.Restore(); err != nil {
-		u.logger.Error("파일 복원 실패: %v", err)
-		return err
-	}
-
-	u.restoreCompleted = true
-
-	// 복원 후 디렉토리 확인
-	files, err := os.ReadDir(u.fileManager.GetBackupDir())
-	if err != nil {
-		u.logger.Error("복원 후 백업 디렉토리 확인 실패: %v", err)
-	} else {
-		for _, file := range files {
-			u.logger.Info("복원 후 파일 확인: %s", file.Name())
-		}
-	}
-
-	return nil
-}
-
-func (u *Updater) handleError(message string, err error) error {
-	u.logger.Error("%s: %v", message, err)
-
-	if u.backupCompleted && !u.restoreCompleted {
-		u.ui.ShowRestoring()
-		if restoreErr := u.restoreFiles(); restoreErr != nil {
-			u.logger.Error("파일 복원 실패: %v", restoreErr)
-			u.ui.ShowError(fmt.Errorf("복원 실패: %v", restoreErr))
-			return fmt.Errorf("%s 및 복원 실패: %v", message, err)
-		}
-		u.ui.ShowRestoreComplete()
-
-		if _, err := os.Stat(u.fileManager.GetBackupDir()); os.IsNotExist(err) {
-			u.logger.Error("백업 디렉토리는 이미 삭제됨")
-		} else {
-			u.logger.Info("복원 완료 후 백업 디렉토리 유지됨: %s", u.fileManager.GetBackupDir())
-		}
-
-		// 복원 완료시 복원 완료 상태 저장
-		u.restoreCompleted = true
-
-		// 복원 성공 시 애플리케이션 재시작 추가
-		u.logger.Info("복원이 완료됨. 애플리케이션을 재시작합니다...")
-		if err := u.restartAfterRestore(); err != nil {
-			u.logger.Error("복원 후 애플리케이션 재시작 실패: %v", err)
-		}
-
-		return fmt.Errorf("%s, 파일이 복원됨: %v", message, err)
-	}
-
-	u.ui.ShowError(fmt.Errorf("%s: %v", message, err))
-	return fmt.Errorf("%s: %v", message, err)
-}
-
-// // UIManager 인터페이스
-// type UIManager interface {
-// 	SetCurrentStep(step int)
-// 	UpdateDetail(message string)
-// 	ShowError(err error)
-// 	Run()
-// 	Close()
-// 	SetRestoreHandler(handler func())
-// 	ShowRestoring()
-// 	ShowRestoreComplete()
-// 	GetTotalSteps() int
-// 	SetCompletionCallback(func())
-// }
 
 ```
 ## internal/file/domain/entity/dir_info.go
@@ -4170,6 +3799,614 @@ func (m *FyneManager) SetCompletionCallback(callback func()) {
 }
 
 ```
+## internal/updater/domain/entity/update_config.go
+```go
+package entity
+
+import "fmt"
+
+// UpdateConfig는 업데이트에 필요한 기본 설정을 담는 엔티티입니다
+type UpdateConfig struct {
+	AppName     string // 업데이트할 애플리케이션 이름
+	FromVersion string // 현재 버전
+	ServerName  string // 서버 프로필 이름
+}
+
+// NewUpdateConfig는 새로운 UpdateConfig 인스턴스를 생성합니다
+func NewUpdateConfig(appName, fromVersion, serverName string) (*UpdateConfig, error) {
+	if appName == "" {
+		return nil, fmt.Errorf("앱 이름은 필수입니다")
+	}
+	if fromVersion == "" {
+		return nil, fmt.Errorf("현재 버전은 필수입니다")
+	}
+	if serverName == "" {
+		return nil, fmt.Errorf("서버 이름은 필수입니다")
+	}
+
+	return &UpdateConfig{
+		AppName:     appName,
+		FromVersion: fromVersion,
+		ServerName:  serverName,
+	}, nil
+}
+
+// Validate는 설정값의 유효성을 검증합니다
+func (c *UpdateConfig) Validate() error {
+	if c.AppName == "" {
+		return fmt.Errorf("앱 이름이 비어있습니다")
+	}
+	if c.FromVersion == "" {
+		return fmt.Errorf("현재 버전이 비어있습니다")
+	}
+	if c.ServerName == "" {
+		return fmt.Errorf("서버 이름이 비어있습니다")
+	}
+	return nil
+}
+
+```
+## internal/updater/domain/entity/update_status.go
+```go
+package entity
+
+// UpdateStatus는 업데이트 진행 상태를 추적하는 엔티티입니다
+type UpdateStatus struct {
+	BackupCompleted  bool   // 백업 완료 여부
+	RestoreCompleted bool   // 복원 완료 여부
+	ServerIP         string // 서버 IP 주소
+	UpdateFile       string // 업데이트 파일 경로
+}
+
+// NewUpdateStatus는 새로운 UpdateStatus 인스턴스를 생성합니다
+func NewUpdateStatus() *UpdateStatus {
+	return &UpdateStatus{
+		BackupCompleted:  false,
+		RestoreCompleted: false,
+	}
+}
+
+// SetServerIP는 서버 IP를 설정합니다
+func (s *UpdateStatus) SetServerIP(ip string) {
+	s.ServerIP = ip
+}
+
+// SetUpdateFile은 업데이트 파일 경로를 설정합니다
+func (s *UpdateStatus) SetUpdateFile(path string) {
+	s.UpdateFile = path
+}
+
+// MarkBackupCompleted는 백업 완료 상태를 설정합니다
+func (s *UpdateStatus) MarkBackupCompleted() {
+	s.BackupCompleted = true
+}
+
+// MarkRestoreCompleted는 복원 완료 상태를 설정합니다
+func (s *UpdateStatus) MarkRestoreCompleted() {
+	s.RestoreCompleted = true
+}
+
+// NeedsRestore는 복원이 필요한 상태인지 확인합니다
+func (s *UpdateStatus) NeedsRestore() bool {
+	return s.BackupCompleted && !s.RestoreCompleted
+}
+
+```
+## internal/updater/domain/repository/update_repository.go
+```go
+package repository
+
+import (
+	"github.com/kihyun1998/dupdater/internal/file"
+	"github.com/kihyun1998/dupdater/internal/hash"
+	"github.com/kihyun1998/dupdater/internal/i18n"
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/network"
+	"github.com/kihyun1998/dupdater/internal/ui"
+	"github.com/kihyun1998/dupdater/internal/updater/domain/entity"
+)
+
+// UpdateRepository는 업데이트 작업의 인터페이스를 정의합니다
+type UpdateRepository interface {
+	// CheckRunningApp은 대상 애플리케이션의 실행 상태를 확인합니다
+	CheckRunningApp() error
+
+	// GetServerIP는 서버 IP를 조회합니다
+	GetServerIP(serverName string) (string, error)
+
+	// BackupFiles는 현재 파일들을 백업합니다
+	BackupFiles() error
+
+	// DownloadUpdateFile은 업데이트 파일을 다운로드합니다
+	DownloadUpdateFile(serverIP string) (string, error)
+
+	// VerifyUpdateFile은 다운로드된 업데이트 파일을 검증합니다
+	VerifyUpdateFile(filePath string) error
+
+	// ExtractUpdateFile은 업데이트 파일을 압축 해제합니다
+	ExtractUpdateFile(filePath string) error
+
+	// VerifyExtractedFiles는 압축 해제된 파일들을 검증합니다
+	VerifyExtractedFiles() error
+
+	// RestartApplication은 애플리케이션을 재시작합니다
+	RestartApplication(config *entity.UpdateConfig) error
+
+	// RestartAfterRestore는 복원 완료 후 애플리케이션을 재시작합니다
+	RestartAfterRestore(config *entity.UpdateConfig) error
+
+	// RestoreFiles는 백업된 파일들을 복원합니다
+	RestoreFiles() error
+}
+
+// Config는 저장소 생성에 필요한 설정을 정의합니다
+type Config struct {
+	Logger      logger.Logger        // 로거
+	Status      *entity.UpdateStatus // 업데이트 상태
+	Config      *entity.UpdateConfig // 업데이트 설정
+	UI          ui.Manager
+	Network     network.Manager
+	FileManager file.Manager
+	HashManager hash.Manager
+	I18n        i18n.Manager
+}
+
+```
+## internal/updater/domain/usecase/update_service.go
+```go
+package usecase
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/ui"
+	"github.com/kihyun1998/dupdater/internal/updater/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/updater/domain/repository"
+)
+
+// UpdateService는 업데이트 프로세스의 비즈니스 로직을 구현합니다
+type UpdateService struct {
+	repo   repository.UpdateRepository
+	ui     ui.Manager
+	logger logger.Logger
+	status *entity.UpdateStatus
+	config *entity.UpdateConfig
+}
+
+// NewUpdateService는 새로운 UpdateService 인스턴스를 생성합니다
+func NewUpdateService(
+	repo repository.UpdateRepository,
+	ui ui.Manager,
+	logger logger.Logger,
+	status *entity.UpdateStatus,
+	config *entity.UpdateConfig,
+) *UpdateService {
+	return &UpdateService{
+		repo:   repo,
+		ui:     ui,
+		logger: logger,
+		status: status,
+		config: config,
+	}
+}
+
+// Start는 업데이트 프로세스를 시작합니다
+func (s *UpdateService) Start() {
+	// UI 복구 핸들러 설정
+	s.ui.SetRestoreHandler(func() {
+		if err := s.restoreFiles(); err != nil {
+			s.logger.Error("파일 복원 실패: %v", err)
+			s.ui.ShowError(fmt.Errorf("복원 실패: %w", err))
+		}
+	})
+
+	// 업데이트 프로세스 시작
+	go func() {
+		if err := s.processUpdate(); err != nil {
+			s.logger.Error("업데이트 실패: %v", err)
+			s.handleError("업데이트 실패", err)
+		}
+	}()
+
+	// UI 실행
+	s.ui.Run()
+}
+
+// processUpdate는 실제 업데이트 작업을 수행합니다
+func (s *UpdateService) processUpdate() error {
+	s.logger.Info("업데이트 프로세스 시작")
+
+	// 1. 애플리케이션 실행 상태 확인
+	if err := s.repo.CheckRunningApp(); err != nil {
+		return s.handleError("애플리케이션 상태 확인 실패", err)
+	}
+
+	// 2. 서버 IP 가져오기
+	serverIP, err := s.repo.GetServerIP(s.config.ServerName)
+	if err != nil {
+		return s.handleError("서버 IP 가져오기 실패", err)
+	}
+	s.status.SetServerIP(serverIP)
+
+	// 3. 파일 백업
+	if err := s.repo.BackupFiles(); err != nil {
+		return s.handleError("파일 백업 실패", err)
+	}
+	s.status.MarkBackupCompleted()
+
+	// 4. 업데이트 파일 다운로드
+	updateFile, err := s.repo.DownloadUpdateFile(serverIP)
+	if err != nil {
+		return s.handleError("업데이트 파일 다운로드 실패", err)
+	}
+	s.status.SetUpdateFile(updateFile)
+
+	// 5. 업데이트 파일 검증
+	if err := s.repo.VerifyUpdateFile(updateFile); err != nil {
+		return s.handleError("업데이트 파일 검증 실패", err)
+	}
+
+	// 6. 파일 압축해제
+	if err := s.repo.ExtractUpdateFile(updateFile); err != nil {
+		return s.handleError("파일 압축해제 실패", err)
+	}
+
+	// 7. 압축해제된 파일들 검증
+	if err := s.repo.VerifyExtractedFiles(); err != nil {
+		return s.handleError("압축해제된 파일 검증 실패", err)
+	}
+
+	// 8. 애플리케이션 재시작
+	if err := s.repo.RestartApplication(s.config); err != nil {
+		return s.handleError("애플리케이션 재시작 실패", err)
+	}
+
+	return nil
+}
+
+// restoreFiles는 백업된 파일들을 복원합니다
+func (s *UpdateService) restoreFiles() error {
+	if s.status.RestoreCompleted {
+		s.logger.Info("이미 복원이 완료되었습니다")
+		return nil
+	}
+
+	s.logger.Info("파일 복원 시작")
+	if err := s.repo.RestoreFiles(); err != nil {
+		return err
+	}
+
+	s.status.MarkRestoreCompleted()
+	time.Sleep(2 * time.Second) // UI 메시지 표시를 위한 대기
+	s.ui.ShowRestoreComplete()
+
+	return nil
+}
+
+// handleError는 에러 상황을 처리합니다
+func (s *UpdateService) handleError(message string, err error) error {
+	s.logger.Error("%s: %v", message, err)
+
+	if s.status.NeedsRestore() {
+		s.ui.ShowRestoring()
+		if restoreErr := s.restoreFiles(); restoreErr != nil {
+			s.logger.Error("파일 복원 실패: %v", restoreErr)
+			s.ui.ShowError(fmt.Errorf("복원 실패: %v", restoreErr))
+			return fmt.Errorf("%s 및 복원 실패: %v", message, err)
+		}
+
+		// 복원 성공시 기존 버전으로 앱 재시작
+		if err := s.repo.RestartAfterRestore(s.config); err != nil {
+			s.logger.Error("복원 후 앱 재시작 실패: %v", err)
+		}
+
+		return fmt.Errorf("%s, 파일이 복원됨: %v", message, err)
+	}
+
+	s.ui.ShowError(fmt.Errorf("%s: %v", message, err))
+	return fmt.Errorf("%s: %v", message, err)
+}
+
+```
+## internal/updater/factory.go
+```go
+package updater
+
+import (
+	"fmt"
+
+	"github.com/kihyun1998/dupdater/internal/file"
+	"github.com/kihyun1998/dupdater/internal/hash"
+	"github.com/kihyun1998/dupdater/internal/i18n"
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/network"
+	"github.com/kihyun1998/dupdater/internal/ui"
+	"github.com/kihyun1998/dupdater/internal/updater/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/updater/domain/repository"
+	"github.com/kihyun1998/dupdater/internal/updater/domain/usecase"
+	"github.com/kihyun1998/dupdater/internal/updater/infrastructure"
+)
+
+// Manager는 업데이트 관리를 위한 인터페이스입니다
+type Manager interface {
+	Start()
+}
+
+// Config는 업데이터 생성에 필요한 설정입니다
+type Config struct {
+	AppName          string
+	FromVersion      string
+	ServerName       string
+	BackupCompleted  bool
+	RestoreCompleted bool
+	UIManager        ui.Manager
+	Logger           logger.Logger
+	NetworkManager   network.Manager
+	FileManager      file.Manager
+	HashManager      hash.Manager
+	I18n             i18n.Manager
+}
+
+// manager는 Manager 인터페이스의 구현체입니다
+type manager struct {
+	service *usecase.UpdateService
+}
+
+// New는 새로운 업데이트 Manager를 생성합니다
+func New(config Config) (Manager, error) {
+	// 1. 엔티티 생성
+	updateConfig, err := entity.NewUpdateConfig(
+		config.AppName,
+		config.FromVersion,
+		config.ServerName,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("업데이트 설정 생성 실패: %w", err)
+	}
+
+	updateStatus := entity.NewUpdateStatus()
+	updateStatus.BackupCompleted = config.BackupCompleted
+	updateStatus.RestoreCompleted = config.RestoreCompleted
+
+	// 2. Repository 계층 설정
+	repoConfig := &repository.Config{
+		Config:      updateConfig,
+		Status:      updateStatus,
+		UI:          config.UIManager,
+		Logger:      config.Logger,
+		Network:     config.NetworkManager,
+		FileManager: config.FileManager,
+		HashManager: config.HashManager,
+		I18n:        config.I18n,
+	}
+
+	// 3. Repository 구현체 생성
+	repo, err := infrastructure.NewUpdateManager(repoConfig)
+	if err != nil {
+		return nil, fmt.Errorf("업데이트 매니저 생성 실패: %w", err)
+	}
+
+	// 4. Service 계층 생성
+	service := usecase.NewUpdateService(
+		repo,
+		config.UIManager,
+		config.Logger,
+		updateStatus,
+		updateConfig,
+	)
+
+	return &manager{
+		service: service,
+	}, nil
+}
+
+// Start는 업데이트 프로세스를 시작합니다
+func (m *manager) Start() {
+	m.service.Start()
+}
+
+```
+## internal/updater/infrastructure/update_manager.go
+```go
+package infrastructure
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"time"
+
+	"github.com/kihyun1998/dupdater/internal/file"
+	"github.com/kihyun1998/dupdater/internal/hash"
+	"github.com/kihyun1998/dupdater/internal/i18n"
+	"github.com/kihyun1998/dupdater/internal/logger"
+	"github.com/kihyun1998/dupdater/internal/network"
+	"github.com/kihyun1998/dupdater/internal/ui"
+	"github.com/kihyun1998/dupdater/internal/updater/domain/entity"
+	"github.com/kihyun1998/dupdater/internal/updater/domain/repository"
+	"github.com/kihyun1998/dupdater/pkg/utils"
+)
+
+// UpdateManager는 실제 업데이트 작업을 수행하는 구현체입니다
+type UpdateManager struct {
+	config      *entity.UpdateConfig
+	status      *entity.UpdateStatus
+	ui          ui.Manager
+	logger      logger.Logger
+	network     network.Manager
+	fileManager file.Manager
+	hashManager hash.Manager
+	i18n        i18n.Manager
+}
+
+// NewUpdateManager는 새로운 UpdateManager 인스턴스를 생성합니다
+func NewUpdateManager(config *repository.Config) (*UpdateManager, error) {
+	if err := config.Config.Validate(); err != nil {
+		return nil, fmt.Errorf("설정 검증 실패: %w", err)
+	}
+
+	return &UpdateManager{
+		config:      config.Config,
+		status:      config.Status,
+		ui:          config.UI,
+		logger:      config.Logger,
+		network:     config.Network,
+		fileManager: config.FileManager,
+		hashManager: config.HashManager,
+		i18n:        config.I18n,
+	}, nil
+}
+
+// CheckRunningApp은 대상 애플리케이션의 실행 상태를 확인합니다
+func (m *UpdateManager) CheckRunningApp() error {
+	m.ui.SetCurrentStep(0)
+	m.ui.UpdateDetail(m.i18n.GetMessage("update.status.checking"))
+
+	const maxAttempts = 30
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		isRunning, _ := utils.CheckApplicationRunning(m.config.AppName)
+		if !isRunning {
+			return nil
+		}
+		time.Sleep(time.Second)
+	}
+
+	return fmt.Errorf("앱 종료 대기 시간 초과")
+}
+
+// GetServerIP는 서버 IP를 조회합니다
+func (m *UpdateManager) GetServerIP(serverName string) (string, error) {
+	m.ui.SetCurrentStep(1)
+	m.ui.UpdateDetail(m.i18n.GetMessage("update.status.getting_info"))
+
+	return m.network.GetServerIP(serverName)
+}
+
+// BackupFiles는 현재 파일들을 백업합니다
+func (m *UpdateManager) BackupFiles() error {
+	m.ui.SetCurrentStep(2)
+	m.ui.UpdateDetail(m.i18n.GetMessage("update.status.preparing"))
+	return m.fileManager.Backup()
+}
+
+// DownloadUpdateFile은 업데이트 파일을 다운로드합니다
+func (m *UpdateManager) DownloadUpdateFile(serverIP string) (string, error) {
+	m.ui.SetCurrentStep(3)
+	m.ui.UpdateDetail(m.i18n.GetMessage("update.status.downloading"))
+
+	filename, err := m.network.GetUpdateFileName(serverIP)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := m.network.DownloadFile(serverIP, filename)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	out, err := os.Create(filename)
+	if err != nil {
+		return "", fmt.Errorf("파일 생성 실패: %w", err)
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("파일 쓰기 실패: %w", err)
+	}
+
+	return filename, nil
+}
+
+// VerifyUpdateFile은 다운로드된 업데이트 파일을 검증합니다
+func (m *UpdateManager) VerifyUpdateFile(filePath string) error {
+	m.ui.SetCurrentStep(4)
+	m.ui.UpdateDetail(m.i18n.GetMessage("update.status.verifying"))
+	return m.hashManager.VerifyUpdateFile(filePath)
+}
+
+// ExtractUpdateFile은 업데이트 파일을 압축 해제합니다
+func (m *UpdateManager) ExtractUpdateFile(filePath string) error {
+	m.ui.SetCurrentStep(5)
+	m.ui.UpdateDetail(m.i18n.GetMessage("update.status.installing"))
+
+	if err := m.fileManager.ExtractZip(filePath); err != nil {
+		return err
+	}
+
+	return m.fileManager.DeleteFile(filePath)
+}
+
+// VerifyExtractedFiles는 압축 해제된 파일들을 검증합니다
+func (m *UpdateManager) VerifyExtractedFiles() error {
+	m.ui.SetCurrentStep(6)
+	m.ui.UpdateDetail(m.i18n.GetMessage("update.status.finalizing"))
+	return m.hashManager.VerifyHashSum()
+}
+
+// RestartApplication은 애플리케이션을 재시작합니다
+func (m *UpdateManager) RestartApplication(config *entity.UpdateConfig) error {
+	m.ui.SetCurrentStep(m.ui.GetTotalSteps() - 1)
+	m.ui.UpdateDetail(m.i18n.GetMessage("update.status.completed"))
+
+	completionCh := make(chan struct{})
+
+	m.ui.SetCompletionCallback(func() {
+		// 상대 경로 대신 실제 경로 사용
+		appPath := fmt.Sprintf("./%s", config.AppName)
+		args := []string{"--patch", "--fromVersion", config.FromVersion}
+
+		if err := utils.LaunchApplication(appPath, args); err != nil {
+			m.logger.Error("애플리케이션 재시작 실패: %v", err)
+			return
+		}
+
+		time.Sleep(2 * time.Second)
+		close(completionCh)
+	})
+
+	<-completionCh
+	m.ui.Close()
+
+	return nil
+}
+
+// RestartAfterRestore는 복원 완료 후 기존 버전의 애플리케이션을 재시작합니다
+func (m *UpdateManager) RestartAfterRestore(config *entity.UpdateConfig) error {
+	m.ui.SetCurrentStep(0)
+	m.ui.UpdateDetail(m.i18n.GetMessage("update.restore.completed"))
+
+	// 복원 완료 메시지 표시를 위한 대기
+	time.Sleep(2 * time.Second)
+
+	// 기존 버전으로 앱 실행
+	appPath := fmt.Sprintf("./%s", config.AppName)
+
+	if err := utils.LaunchApplication(appPath, nil); err != nil {
+		m.logger.Error("복원 후 애플리케이션 실행 실패: %v", err)
+		return err
+	}
+
+	// UI 종료 전 잠시 대기
+	time.Sleep(2 * time.Second)
+	m.ui.Close()
+
+	return nil
+}
+
+// RestoreFiles는 백업된 파일들을 복원합니다
+func (m *UpdateManager) RestoreFiles() error {
+	if err := m.fileManager.Restore(); err != nil {
+		m.logger.Error("파일 복원 실패: %v", err)
+		return err
+	}
+	return nil
+}
+
+```
 ## internal/version/domain/entity/version.go
 ```go
 package entity
@@ -4707,6 +4944,7 @@ func WaitForApplicationToClose(appName string, onWait func(string)) error {
 // LaunchApplication은 새 버전의 애플리케이션을 실행합니다
 func LaunchApplication(execPath string, args []string) error {
 	cmd := exec.Command(execPath, args...)
+	// Windows 특정 설정 추가
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		CreationFlags: windows.CREATE_NEW_CONSOLE,
 	}
