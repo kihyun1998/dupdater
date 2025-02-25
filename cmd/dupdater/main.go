@@ -34,6 +34,7 @@ var (
 	testType    = flag.String("testType", "", "테스트 시나리오 유형 (success, error1, error2, ..., error8)")
 	themeMode   = flag.String("theme", "light", "테마 모드 (light/dark)")
 	langMode    = flag.String("lang", "ko", "언어 설정 (ko/en)")
+	targetPID   = flag.Int("pid", 0, "대상 애플리케이션의 PID")
 )
 
 func main() {
@@ -149,6 +150,7 @@ func main() {
 		AppName:         TargetAppName,
 		FromVersion:     *fromVersion,
 		ServerName:      *serverName,
+		PID:             *targetPID,
 		BackupCompleted: false,
 		UIManager:       uiManager,
 		Logger:          logger,

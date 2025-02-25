@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -94,6 +95,38 @@ func LaunchProcessWithElevation(execPath string, args string) error {
 	}
 
 	return nil
+}
+
+// IsProcessRunningByPID는 지정된 PID의 프로세스가 실행 중인지 확인합니다.
+func IsProcessRunningByPID(pid int) (bool, error) {
+	if pid <= 0 {
+		return false, fmt.Errorf("유효하지 않은 PID: %d", pid)
+	}
+
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false, fmt.Errorf("프로세스 조회 실패: %w", err)
+	}
+
+	// Windows에서는 os.FindProcess가 항상 성공하므로 실제 실행 여부 확인 필요
+	if runtime.GOOS == "windows" {
+		// Signal 0은 실제 signal을 보내지 않고 프로세스 존재 여부만 확인
+		err = process.Signal(syscall.Signal(0))
+		if err != nil {
+			// 에러가 발생하면 프로세스가 실행 중이 아님
+			return false, nil
+		}
+		return true, nil
+	}
+
+	// Windows 이외의 시스템
+	return true, nil
+
+}
+
+// CheckApplicationRunningByPID는 지정된 PID의 애플리케이션이 실행 중인지 확인합니다
+func CheckApplicationRunningByPID(pid int) (bool, error) {
+	return IsProcessRunningByPID(pid)
 }
 
 // CheckApplicationRunning은 지정된 프로세스가 실행 중인지 확인합니다

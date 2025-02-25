@@ -45,9 +45,10 @@ type UpdateRepository interface {
 
 // Config는 저장소 생성에 필요한 설정을 정의합니다
 type Config struct {
-	Logger      logger.Logger        // 로거
-	Status      *entity.UpdateStatus // 업데이트 상태
-	Config      *entity.UpdateConfig // 업데이트 설정
+	Logger logger.Logger        // 로거
+	Status *entity.UpdateStatus // 업데이트 상태
+	Config *entity.UpdateConfig // 업데이트 설정
+
 	UI          ui.Manager
 	Network     network.Manager
 	FileManager file.Manager

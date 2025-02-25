@@ -25,6 +25,7 @@ type Config struct {
 	AppName          string
 	FromVersion      string
 	ServerName       string
+	PID              int
 	BackupCompleted  bool
 	RestoreCompleted bool
 	UIManager        ui.Manager
@@ -47,6 +48,7 @@ func New(config Config) (Manager, error) {
 		config.AppName,
 		config.FromVersion,
 		config.ServerName,
+		config.PID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("업데이트 설정 생성 실패: %w", err)

@@ -54,7 +54,11 @@ func (m *UpdateManager) CheckRunningApp() error {
 
 	const maxAttempts = 30
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		isRunning, _ := utils.CheckApplicationRunning(m.config.AppName)
+		// isRunning, _ := utils.CheckApplicationRunning(m.config.AppName)
+		isRunning, err := utils.CheckApplicationRunningByPID(m.config.PID)
+		if err != nil {
+			return fmt.Errorf("애플리케이션 사용 조회 실패 :%w", err)
+		}
 		if !isRunning {
 			return nil
 		}

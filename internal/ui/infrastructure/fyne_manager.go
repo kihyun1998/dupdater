@@ -13,6 +13,7 @@ import (
 	"github.com/kihyun1998/dupdater/internal/ui/components"
 	"github.com/kihyun1998/dupdater/internal/ui/domain/entity"
 	"github.com/kihyun1998/dupdater/internal/ui/domain/repository"
+	"github.com/kihyun1998/dupdater/pkg/utils/logo"
 	"github.com/kihyun1998/dupdater/pkg/utils/theme"
 )
 
@@ -63,7 +64,9 @@ func (m *FyneManager) initWindow() {
 
 	m.mainWindow.Resize(fyne.NewSize(400, 150))
 	m.mainWindow.CenterOnScreen()
+	m.mainWindow.SetIcon(logo.ACRALogo)
 	m.mainWindow.SetFixedSize(false)
+
 }
 
 // initUI는 UI 컴포넌트를 초기화합니다

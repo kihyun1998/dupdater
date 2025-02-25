@@ -7,10 +7,11 @@ type UpdateConfig struct {
 	AppName     string // 업데이트할 애플리케이션 이름
 	FromVersion string // 현재 버전
 	ServerName  string // 서버 프로필 이름
+	PID         int    // 접속기 애플리케이션의 PID
 }
 
 // NewUpdateConfig는 새로운 UpdateConfig 인스턴스를 생성합니다
-func NewUpdateConfig(appName, fromVersion, serverName string) (*UpdateConfig, error) {
+func NewUpdateConfig(appName, fromVersion, serverName string, pid int) (*UpdateConfig, error) {
 	if appName == "" {
 		return nil, fmt.Errorf("앱 이름은 필수입니다")
 	}
@@ -20,11 +21,15 @@ func NewUpdateConfig(appName, fromVersion, serverName string) (*UpdateConfig, er
 	if serverName == "" {
 		return nil, fmt.Errorf("서버 이름은 필수입니다")
 	}
+	if pid == 0 {
+		return nil, fmt.Errorf("PID는 필수입니다")
+	}
 
 	return &UpdateConfig{
 		AppName:     appName,
 		FromVersion: fromVersion,
 		ServerName:  serverName,
+		PID:         pid,
 	}, nil
 }
 
@@ -38,6 +43,9 @@ func (c *UpdateConfig) Validate() error {
 	}
 	if c.ServerName == "" {
 		return fmt.Errorf("서버 이름이 비어있습니다")
+	}
+	if c.PID == 0 {
+		return fmt.Errorf("PID가 설정되어 있지 않습니다.")
 	}
 	return nil
 }
