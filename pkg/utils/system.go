@@ -103,25 +103,39 @@ func IsProcessRunningByPID(pid int) (bool, error) {
 		return false, fmt.Errorf("유효하지 않은 PID: %d", pid)
 	}
 
+	if runtime.GOOS == "windows" {
+		// PROCESS_QUERY_LIMITED_INFORMATION 플래그를 사용하여 프로세스 핸들을 엽니다.
+		h, err := syscall.OpenProcess(syscall.PROCESS_QUERY_INFORMATION, false, uint32(pid))
+		if err != nil {
+			// 에러가 발생하면 프로세스가 존재하지 않거나 접근 권한이 없다는 의미입니다.
+			return false, nil
+		}
+		defer syscall.CloseHandle(h)
+
+		var exitCode uint32
+		err = syscall.GetExitCodeProcess(h, &exitCode)
+		if err != nil {
+			return false, fmt.Errorf("프로세스 종료 코드 확인 실패: %w", err)
+		}
+		// STILL_ACTIVE는 Windows에서 프로세스가 여전히 실행 중임을 나타내는 값 (259)
+		const STILL_ACTIVE = 259
+		if exitCode == STILL_ACTIVE {
+			return true, nil
+		}
+		return false, nil
+	}
+
+	// Windows 이외의 시스템에서는 os.FindProcess의 결과에 의존 (추가 검증 필요할 수 있음)
 	process, err := os.FindProcess(pid)
 	if err != nil {
 		return false, fmt.Errorf("프로세스 조회 실패: %w", err)
 	}
-
-	// Windows에서는 os.FindProcess가 항상 성공하므로 실제 실행 여부 확인 필요
-	if runtime.GOOS == "windows" {
-		// Signal 0은 실제 signal을 보내지 않고 프로세스 존재 여부만 확인
-		err = process.Signal(syscall.Signal(0))
-		if err != nil {
-			// 에러가 발생하면 프로세스가 실행 중이 아님
-			return false, nil
-		}
-		return true, nil
+	// Unix 계열에서는 signal 0을 이용한 확인이 가능
+	err = process.Signal(syscall.Signal(0))
+	if err != nil {
+		return false, nil
 	}
-
-	// Windows 이외의 시스템
 	return true, nil
-
 }
 
 // CheckApplicationRunningByPID는 지정된 PID의 애플리케이션이 실행 중인지 확인합니다
